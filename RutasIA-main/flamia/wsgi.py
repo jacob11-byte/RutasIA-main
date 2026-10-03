@@ -1,5 +1,5 @@
 """
-WSGI config for rutasia project.
+WSGI config for flamia project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
@@ -11,6 +11,6 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "rutasia.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "flamia.settings")
 
 application = get_wsgi_application()

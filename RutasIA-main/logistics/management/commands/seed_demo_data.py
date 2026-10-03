@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from logistics.models import Department, Driver, Order, RouteConnection, Vehicle
+from logistics.models import Department, Driver, Order, OrderItem, Product, RouteConnection, Store, Vehicle
 
 
 class Command(BaseCommand):
@@ -61,10 +61,10 @@ class Command(BaseCommand):
             )
 
         drivers_data = [
-            ("Carlos Andrés Mendoza López",   "5521-3344", "L-10234567"),
-            ("Rosa María López Cifuentes",    "4433-2211", "L-20987654"),
-            ("Miguel Ángel Fuentes Soto",     "3399-8877", "L-30112233"),
-            ("Patricia Alejandra Ruiz Mora",  "5577-6612", "L-40556677"),
+            ("Luis Ramirez - Ruta agua zona 7", "5521-3344", "REP-AGUA-01"),
+            ("Maria Lopez - Ruta gas zona 11", "4433-2211", "REP-GAS-02"),
+            ("Carlos Fuentes - Ruta mixta sur", "3399-8877", "REP-MIX-03"),
+            ("Patricia Ruiz - Cobros pendientes", "5577-6612", "REP-COB-04"),
         ]
 
         drivers = {}
@@ -76,10 +76,10 @@ class Command(BaseCommand):
             drivers[license_number] = driver
 
         vehicles_data = [
-            ("C-102BDF", "Camión Isuzu NPR",       Decimal("2800"), Decimal("6.5"), Decimal("4.10"), "GUA", "L-10234567"),
-            ("C-215KLM", "Camión Hino 300",         Decimal("3500"), Decimal("5.9"), Decimal("4.60"), "ESC", "L-20987654"),
-            ("P-883QRT", "Panel Hyundai H-1",       Decimal("1200"), Decimal("9.4"), Decimal("3.20"), "GUA", "L-30112233"),
-            ("C-774RUV", "Camión Mitsubishi Fuso",  Decimal("3000"), Decimal("6.1"), Decimal("4.35"), "QUE", "L-40556677"),
+            ("AG-101", "Pickup reparto de garrafones", Decimal("1400"), Decimal("8.5"), Decimal("3.10"), "GUA", "REP-AGUA-01"),
+            ("GAS-22", "Panel reparto de cilindros", Decimal("1800"), Decimal("7.2"), Decimal("3.80"), "GUA", "REP-GAS-02"),
+            ("MIX-15", "Motocarro ruta mixta", Decimal("650"), Decimal("18.0"), Decimal("1.60"), "SAC", "REP-MIX-03"),
+            ("COB-04", "Pickup apoyo cobros y entregas", Decimal("1200"), Decimal("9.4"), Decimal("2.90"), "ESC", "REP-COB-04"),
         ]
 
         for plate, model, capacity, efficiency, cost, current, license_number in vehicles_data:
@@ -96,22 +96,94 @@ class Command(BaseCommand):
                 },
             )
 
+        stores_data = [
+            ("Tienda El Buen Precio", "Don Mario", "5544-1001", "Guatemala", "Bethania", "Colonia Bethania", "A la par de farmacia", Store.ProductType.WATER, "GUA", Decimal("14.650850"), Decimal("-90.554160")),
+            ("Mini Market La Bendicion", "Ana Lopez", "5544-1002", "Guatemala", "Zona 11", "Zona 11", "Frente a parada de buses", Store.ProductType.GAS, "GUA", Decimal("14.602940"), Decimal("-90.545480")),
+            ("Abarroteria El Camino", "Rosa Perez", "5544-1003", "Antigua Guatemala", "San Felipe", "Antigua Guatemala", "Porton azul", Store.ProductType.BOTH, "SAC", Decimal("14.558610"), Decimal("-90.733870")),
+            ("Comercial El Sur", "Luis Garcia", "5544-1004", "Escuintla", "Centro", "Escuintla centro", "Esquina del mercado", Store.ProductType.WATER, "ESC", Decimal("14.305000"), Decimal("-90.785000")),
+        ]
+
+        stores = {}
+        for name, contact, phone, municipality, neighborhood, address, reference, product_type, dept_code, lat, lng in stores_data:
+            store, _ = Store.objects.get_or_create(
+                name=name,
+                defaults={
+                    "contact_name": contact,
+                    "phone": phone,
+                    "municipality": municipality,
+                    "neighborhood": neighborhood,
+                    "address": address,
+                    "reference": reference,
+                    "product_type": product_type,
+                    "department": departments[dept_code],
+                    "latitude": lat,
+                    "longitude": lng,
+                    "is_active": True,
+                },
+            )
+            stores[name] = store
+
+        products_data = [
+            ("Garrafon de agua", Product.Type.WATER, "5 galones", Decimal("18.00"), Decimal("20.00")),
+            ("Pack agua pura", Product.Type.WATER, "24 botellas", Decimal("32.00"), Decimal("12.00")),
+            ("Cilindro de gas", Product.Type.GAS, "25 libras", Decimal("135.00"), Decimal("11.34")),
+            ("Cilindro de gas", Product.Type.GAS, "35 libras", Decimal("185.00"), Decimal("15.88")),
+        ]
+        products = {}
+        for name, product_type, presentation, unit_price, unit_weight in products_data:
+            product, _ = Product.objects.get_or_create(
+                name=name,
+                presentation=presentation,
+                defaults={
+                    "product_type": product_type,
+                    "unit_price": unit_price,
+                    "unit_weight_kg": unit_weight,
+                    "is_active": True,
+                },
+            )
+            products[(name, presentation)] = product
+
         if Order.objects.count() == 0:
             order_data = [
-                ("GUA", "QUE", Decimal("850"), 24, Order.Priority.HIGH),
-                ("GUA", "QUE", Decimal("600"), 12, Order.Priority.NORMAL),
-                ("ESC", "RET", Decimal("430"), 18, Order.Priority.NORMAL),
-                ("GUA", "PET", Decimal("500"), 8, Order.Priority.HIGH),
-                ("GUA", "IZA", Decimal("300"), 10, Order.Priority.LOW),
+                ("GUA", "Tienda El Buen Precio", Order.Priority.HIGH, [(("Garrafon de agua", "5 galones"), 12), (("Pack agua pura", "24 botellas"), 4)]),
+                ("GUA", "Mini Market La Bendicion", Order.Priority.NORMAL, [(("Cilindro de gas", "25 libras"), 4)]),
+                ("GUA", "Abarroteria El Camino", Order.Priority.HIGH, [(("Garrafon de agua", "5 galones"), 8), (("Cilindro de gas", "35 libras"), 2)]),
+                ("ESC", "Comercial El Sur", Order.Priority.NORMAL, [(("Pack agua pura", "24 botellas"), 10)]),
             ]
-            for origin_code, destination_code, weight, packages, priority in order_data:
-                Order.objects.create(
+            for origin_code, store_name, priority, item_defs in order_data:
+                store = stores[store_name]
+                total_weight = Decimal("0.00")
+                total_packages = 0
+                order = Order.objects.create(
                     origin=departments[origin_code],
-                    destination=departments[destination_code],
-                    weight_kg=weight,
-                    package_count=packages,
+                    destination=store.department,
+                    store=store,
+                    weight_kg=Decimal("1.00"),
+                    package_count=1,
                     priority=priority,
                     status=Order.Status.PENDING,
                 )
+                for product_key, quantity in item_defs:
+                    product = products[product_key]
+                    OrderItem.objects.create(
+                        order=order,
+                        product=product,
+                        quantity=quantity,
+                        unit_price=product.unit_price,
+                    )
+                    total_weight += Decimal(quantity) * product.unit_weight_kg
+                    total_packages += quantity
+                order.weight_kg = total_weight
+                order.package_count = total_packages
+                order.save(update_fields=["weight_kg", "package_count", "updated_at"])
+
+        fallback_product = products[("Garrafon de agua", "5 galones")]
+        for order in Order.objects.filter(items__isnull=True):
+            OrderItem.objects.create(
+                order=order,
+                product=fallback_product,
+                quantity=order.package_count or 1,
+                unit_price=fallback_product.unit_price,
+            )
 
         self.stdout.write(self.style.SUCCESS("Datos de demostración cargados correctamente."))

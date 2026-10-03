@@ -1,12 +1,12 @@
-# JaironRoute — Sistema de Optimización de Rutas
+# Flamia — Sistema Offline de Rutas y Cobros
 
-Sistema web de gestión y optimización de rutas logísticas para Guatemala. Permite planificar viajes entre departamentos usando algoritmos de camino más corto, gestionar pedidos, conductores y vehículos, y visualizar rutas en un mapa interactivo.
+Sistema web para reparto de agua purificada o gas en Guatemala. Permite registrar tiendas/clientes con GPS, planificar rutas, gestionar entregas, repartidores, vehículos, cobros y visualizar recorridos en un mapa interactivo.
 
 ---
 
 ## Descripción del proyecto
 
-JaironRoute resuelve el problema de encontrar la ruta más corta entre cualquier par de departamentos de Guatemala, considerando las conexiones viales reales y sus distancias en kilómetros. El sistema:
+Flamia resuelve el problema de organizar rutas de reparto, entregas y cobros para negocios de agua purificada o gas, conservando la optimización de rutas entre zonas/departamentos y agregando clientes con ubicación GPS. El sistema:
 
 - Calcula rutas óptimas usando el algoritmo de **Dijkstra** (grafo de distancias viales) o **A\*** (con heurística Haversine).
 - Visualiza la ruta sobre un mapa vectorial con **MapLibre GL JS** y traza el trazado real por carreteras via **OpenRouteService**.
@@ -325,7 +325,7 @@ El grafo interno solo contiene distancias en km. Para dibujar la ruta sobre el m
 ```bash
 # 1. Clonar el repositorio
 git clone <repo-url>
-cd RutasIA
+cd flamia
 
 # 2. Crear y activar entorno virtual
 python -m venv .venv
@@ -369,12 +369,12 @@ Crear un archivo `.env` en la raiz del proyecto:
 ## Estructura del proyecto
 
 ```
-RutasIA/
+flamia/
 |-- manage.py
 |-- requirements.txt
 |-- README.md
 |
-|-- rutasia/                        # Configuracion del proyecto Django
+|-- flamia/                         # Configuracion del proyecto Django
 |   |-- settings.py
 |   |-- urls.py
 |   `-- wsgi.py
@@ -452,7 +452,7 @@ Todos los endpoints requieren sesion autenticada. Base URL: `/`
      ```
    - Start Command:
      ```bash
-     python manage.py migrate && gunicorn rutasia.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
+     python manage.py migrate && gunicorn flamia.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
      ```
 4. Configura las variables de entorno listadas en la seccion anterior.
 

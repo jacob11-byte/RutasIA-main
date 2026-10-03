@@ -1,10 +1,11 @@
 import json
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import Department, Order, RouteConnection, Trip, Vehicle
+from .models import Department, Order, RouteConnection, Trip, UserProfile, Vehicle
 from .services import PlanningError, RouteOptimizer, TripPlanner
 
 
@@ -34,6 +35,9 @@ class RouteOptimizerTests(TestCase):
 
 class TripPlanningApiTests(TestCase):
     def setUp(self):
+        self.user = User.objects.create_user(username="tester", password="pass123")
+        UserProfile.objects.create(user=self.user, role=UserProfile.Role.SUPERVISOR)
+        self.client.force_login(self.user)
         self.gua = Department.objects.create(code="GUA", name="Guatemala")
         self.esc = Department.objects.create(code="ESC", name="Escuintla")
         self.que = Department.objects.create(code="QUE", name="Quetzaltenango")
@@ -91,6 +95,7 @@ class TripPlanningApiTests(TestCase):
         trip = Trip.objects.get()
         self.assertEqual(trip.status, Trip.Status.PLANNED)
         self.assertEqual(trip.orders.count(), 2)
+        self.assertEqual(trip.stops.count(), 2)
         self.order_1.refresh_from_db()
         self.order_2.refresh_from_db()
         self.assertEqual(self.order_1.status, Order.Status.ASSIGNED)

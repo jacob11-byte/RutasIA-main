@@ -7,7 +7,7 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from logistics.models import Department, Driver, FuelPrice, Order, Trip, TripEvent, TripOrder, Vehicle
+from logistics.models import Department, Driver, FuelPrice, Order, RouteStop, Trip, TripEvent, TripOrder, Vehicle
 from logistics.domain.exceptions import PlanningError
 from logistics.domain.services import AStarOptimizer, RouteOptimizer, to_decimal, ZERO
 
@@ -26,13 +26,54 @@ class TripPlanner:
             raise PlanningError("Todos los pedidos deben estar en estado pendiente.")
 
         first = order_list[0]
-        same_route = all(
+        same_route = True or all(
             o.origin_id == first.origin_id and o.destination_id == first.destination_id for o in order_list
         )
         if not same_route:
             raise PlanningError("Para esta versión, los pedidos deben compartir mismo origen y destino.")
 
         return order_list
+
+    @staticmethod
+    def _ordered_stops(order_list: list[Order], optimizer) -> list[Order]:
+        pending = order_list[:]
+        current_id = pending[0].origin_id
+        ordered: list[Order] = []
+        while pending:
+            best_order = None
+            best_distance = None
+            for order in pending:
+                try:
+                    _nodes, distance = optimizer.shortest_path(current_id, order.destination_id)
+                except PlanningError:
+                    continue
+                if best_distance is None or distance < best_distance:
+                    best_order = order
+                    best_distance = distance
+            if best_order is None:
+                raise PlanningError("No existe una ruta conectada para una o mas paradas seleccionadas.")
+            ordered.append(best_order)
+            pending.remove(best_order)
+            current_id = best_order.destination_id
+        return ordered
+
+    @staticmethod
+    def _build_route(order_list: list[Order], optimizer) -> tuple[list[int], Decimal, list[Order]]:
+        ordered_orders = TripPlanner._ordered_stops(order_list, optimizer)
+        current_id = ordered_orders[0].origin_id
+        route_node_ids: list[int] = []
+        total_distance = ZERO
+
+        for order in ordered_orders:
+            node_ids, distance = optimizer.shortest_path(current_id, order.destination_id)
+            if route_node_ids and node_ids and route_node_ids[-1] == node_ids[0]:
+                route_node_ids.extend(node_ids[1:])
+            else:
+                route_node_ids.extend(node_ids)
+            total_distance += distance
+            current_id = order.destination_id
+
+        return route_node_ids, to_decimal(total_distance), ordered_orders
 
     @classmethod
     @transaction.atomic
@@ -56,11 +97,10 @@ class TripPlanner:
         if Decimal(vehicle.fuel_efficiency_km_l) <= ZERO:
             raise PlanningError("La eficiencia del vehículo debe ser mayor a 0.")
 
-        origin = order_list[0].origin
-        destination = order_list[0].destination
-
         optimizer = AStarOptimizer if algorithm == "astar" else RouteOptimizer
-        node_ids, distance = optimizer.shortest_path(origin.id, destination.id)
+        node_ids, distance, ordered_orders = cls._build_route(order_list, optimizer)
+        origin = ordered_orders[0].origin
+        destination = ordered_orders[-1].destination
 
         fuel_liters = to_decimal(distance / Decimal(vehicle.fuel_efficiency_km_l))
         fuel_gallons = to_decimal(fuel_liters / LITERS_PER_GALLON)
@@ -87,7 +127,18 @@ class TripPlanner:
             status=Trip.Status.PLANNED,
         )
 
-        TripOrder.objects.bulk_create([TripOrder(trip=trip, order=order) for order in order_list])
+        TripOrder.objects.bulk_create([TripOrder(trip=trip, order=order) for order in ordered_orders])
+        RouteStop.objects.bulk_create([
+            RouteStop(
+                trip=trip,
+                order=order,
+                store=order.store,
+                sequence=index,
+                latitude=order.store.latitude if order.store else order.destination.latitude,
+                longitude=order.store.longitude if order.store else order.destination.longitude,
+            )
+            for index, order in enumerate(ordered_orders, start=1)
+        ])
         Order.objects.filter(id__in=[o.id for o in order_list]).update(status=Order.Status.ASSIGNED)
         algo_label = "A* (A-estrella)" if algorithm == "astar" else "Dijkstra"
         TripEvent.objects.create(
@@ -107,6 +158,7 @@ class TripLifecycleService:
         trip.started_at = timezone.now()
         trip.save(update_fields=["status", "started_at", "updated_at"])
         trip.orders.update(status=Order.Status.IN_TRANSIT)
+        trip.stops.filter(status=RouteStop.Status.PENDING).update(status=RouteStop.Status.PENDING)
         TripEvent.objects.create(trip=trip, note="Viaje iniciado.")
         return trip
 
@@ -121,6 +173,10 @@ class TripLifecycleService:
         trip.completed_at = timezone.now()
         trip.save(update_fields=["status", "started_at", "completed_at", "updated_at"])
         trip.orders.update(status=Order.Status.DELIVERED)
+        trip.stops.exclude(status=RouteStop.Status.NOT_DELIVERED).update(
+            status=RouteStop.Status.DELIVERED,
+            delivered_at=trip.completed_at,
+        )
         TripEvent.objects.create(trip=trip, note="Viaje completado y pedidos marcados como entregados.")
         return trip
 
@@ -132,6 +188,7 @@ class TripLifecycleService:
         trip.status = Trip.Status.CANCELED
         trip.save(update_fields=["status", "updated_at"])
         trip.orders.exclude(status=Order.Status.DELIVERED).update(status=Order.Status.PENDING)
+        trip.stops.exclude(status=RouteStop.Status.DELIVERED).update(status=RouteStop.Status.PENDING)
         TripEvent.objects.create(trip=trip, note="Viaje cancelado.")
         return trip
 

@@ -5,10 +5,15 @@ const API = {
     departments: "/api/departments/",
     connections: "/api/connections/",
     drivers: "/api/drivers/",
+    stores: "/api/stores/",
+    products: "/api/products/",
     vehicles: "/api/vehicles/",
     orders: "/api/orders/",
     trips: "/api/trips/",
     planTrip: "/api/trips/plan/",
+    payments: "/api/payments/",
+    balances: "/api/balances/",
+    reports: "/api/reports/",
     fuelPrice: "/api/fuel-price/"
 };
 
@@ -43,9 +48,14 @@ const state = {
     departments: [],
     connections: [],
     drivers: [],
+    stores: [],
+    products: [],
     vehicles: [],
     orders: [],
     trips: [],
+    payments: [],
+    balances: [],
+    report: null,
     users: []
 };
 
@@ -55,11 +65,13 @@ let mapHasAutoFit = false;
 let activeInfoWindow = null;
 let selectedMapTripId = null;
 let gmapMarkers = [];
+let gmapStoreMarkers = [];
 let gmapConnections = [];
 let gmapRouteMarkers = [];
 let gpsSimTimer = null;
 let gpsSimMarker = null;
 let lastDirectionsResult = null;
+let deliverySimTimer = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
     bindTabs();
@@ -90,17 +102,29 @@ function bindTabs() {
 
 function bindForms() {
     document.getElementById("vehicle-form").addEventListener("submit", onVehicleSubmit);
+    document.getElementById("store-form").addEventListener("submit", onStoreSubmit);
+    document.getElementById("btn-store-gps").addEventListener("click", fillStoreGpsFromDevice);
+    document.getElementById("order-store").addEventListener("change", onOrderStoreChange);
+    document.getElementById("order-product").addEventListener("change", updateOrderEstimate);
+    document.querySelector("#order-form input[name='quantity']").addEventListener("input", updateOrderEstimate);
     document.getElementById("driver-form").addEventListener("submit", onDriverSubmit);
+    document.getElementById("product-form").addEventListener("submit", onProductSubmit);
     document.getElementById("order-form").addEventListener("submit", onOrderSubmit);
+    document.getElementById("payment-store").addEventListener("change", renderPaymentOrderSelect);
+    document.getElementById("payment-form").addEventListener("submit", onPaymentSubmit);
     document.getElementById("planner-form").addEventListener("submit", onPlannerSubmit);
     document.getElementById("event-form").addEventListener("submit", onEventSubmit);
     document.getElementById("trips-body").addEventListener("click", onTripsActionClick);
+    document.getElementById("stores-body").addEventListener("click", onStoresActionClick);
     document.getElementById("user-form").addEventListener("submit", onUserSubmit);
     document.getElementById("department-form").addEventListener("submit", onDepartmentSubmit);
     document.getElementById("map-trip-select").addEventListener("change", onMapTripSelect);
     document.getElementById("dept-preset-select").addEventListener("change", onDeptPresetChange);
     document.getElementById("btn-start-gps").addEventListener("click", startGpsSimulation);
     document.getElementById("btn-stop-gps").addEventListener("click", stopGpsSimulation);
+    document.getElementById("btn-sim-delivery").addEventListener("click", () => {
+        simulateDelivery(selectedMapTripId);
+    });
     document.getElementById("fuel-form").addEventListener("submit", onFuelPriceSubmit);
     document.getElementById("btn-edit-fuel").addEventListener("click", () => {
         document.getElementById("fuel-form").style.display = "";
@@ -110,6 +134,7 @@ function bindForms() {
         document.getElementById("fuel-form").style.display = "none";
         document.getElementById("btn-edit-fuel").style.display = "";
     });
+    document.getElementById("report-filter-btn").addEventListener("click", reloadReport);
 }
 
 
@@ -198,22 +223,32 @@ function bindFilters() {
 
 async function reloadAll() {
     try {
-        const [meRes, deptRes, connRes, driverRes, vehicleRes, orderRes, tripRes] = await Promise.all([
+        const [meRes, deptRes, connRes, storeRes, productRes, driverRes, vehicleRes, orderRes, tripRes, paymentRes, balanceRes, reportRes] = await Promise.all([
             getJson(API.me),
             getJson(API.departments),
             getJson(API.connections),
+            getJson(API.stores),
+            getJson(API.products),
             getJson(API.drivers),
             getJson(API.vehicles),
             getJson(API.orders),
-            getJson(API.trips)
+            getJson(API.trips),
+            getJson(API.payments),
+            getJson(API.balances),
+            getJson(API.reports)
         ]);
         state.currentUser = meRes.user;
         state.departments = deptRes.departments;
         state.connections = connRes.connections;
+        state.stores = storeRes.stores;
+        state.products = productRes.products;
         state.drivers = driverRes.drivers;
         state.vehicles = vehicleRes.vehicles;
         state.orders = orderRes.orders;
         state.trips = tripRes.trips;
+        state.payments = paymentRes.payments;
+        state.balances = balanceRes.balances;
+        state.report = reportRes.report;
 
         await Promise.all([reloadDashboard(), reloadFuelPrice()]);
 
@@ -252,10 +287,20 @@ function renderAll() {
     renderDashboard();
     renderDepartmentsInSelects();
     renderDepartments();
+    renderStores();
+    renderStoreSelects();
+    renderProducts();
+    renderProductSelects();
+    updateOrderEstimate();
     renderDriverSelects();
     renderVehicles();
     renderDrivers();
     renderOrdersFiltered();
+    renderPaymentStoreSelect();
+    renderPaymentOrderSelect();
+    renderPayments();
+    renderBalances();
+    renderReport();
     renderPlannerInputs();
     renderTripsFiltered();
     renderEventTripSelect();
@@ -279,6 +324,8 @@ function renderUserInfo() {
     document.getElementById("tab-users-btn").style.display = isAdmin ? "" : "none";
     document.getElementById("tab-departments-btn").style.display = isSupervisor ? "" : "none";
     document.getElementById("vehicle-form-card").style.display = isSupervisor ? "" : "none";
+    document.getElementById("store-form-card").style.display = isSupervisor ? "" : "none";
+    document.getElementById("product-form-card").style.display = isSupervisor ? "" : "none";
     document.getElementById("driver-form-card").style.display = isSupervisor ? "" : "none";
     document.getElementById("order-form-card").style.display = isSupervisor ? "" : "none";
     document.getElementById("department-form-card").style.display = isSupervisor ? "" : "none";
@@ -326,7 +373,7 @@ function renderDepartmentsInSelects() {
         )
     ].join("");
 
-    ["vehicle-current-department", "order-origin", "order-destination"].forEach((id) => {
+    ["vehicle-current-department", "store-department", "order-origin", "order-destination"].forEach((id) => {
         const select = document.getElementById(id);
         if (!select) return;
         if (select.dataset.loaded === "1") {
@@ -347,12 +394,102 @@ function renderDepartmentsInSelects() {
     document.getElementById("order-filter-dest").innerHTML = filterOpts;
 }
 
+function renderStoreSelects() {
+    const activeStores = state.stores.filter((store) => store.is_active);
+    const options = [
+        `<option value="">Sin tienda registrada</option>`,
+        ...activeStores.map((store) => {
+            const place = [store.municipality, store.neighborhood].filter(Boolean).join(" / ");
+            const label = `${store.name} - ${place || store.department_name}`;
+            return `<option value="${store.id}">${escapeHtml(label)}</option>`;
+        })
+    ].join("");
+    const select = document.getElementById("order-store");
+    if (select) select.innerHTML = options;
+}
+
+function renderStores() {
+    const body = document.getElementById("stores-body");
+    if (!body) return;
+    body.innerHTML = "";
+    if (!state.stores.length) {
+        body.innerHTML = `<tr><td colspan="9">No hay tiendas registradas.</td></tr>`;
+        return;
+    }
+    state.stores.forEach((store) => {
+        body.insertAdjacentHTML(
+            "beforeend",
+            `<tr>
+                <td><strong>${escapeHtml(store.name)}</strong><br><small>${escapeHtml(store.address || store.reference || "-")}</small></td>
+                <td>${escapeHtml(store.department_name)}</td>
+                <td>${productTypeLabel(store.product_type)}</td>
+                <td>${escapeHtml(store.phone || "-")}</td>
+                <td>${escapeHtml(store.municipality || "-")}</td>
+                <td>${escapeHtml(store.neighborhood || "-")}</td>
+                <td>${Number(store.latitude).toFixed(5)}, ${Number(store.longitude).toFixed(5)}</td>
+                <td>${statusChip(store.is_active ? "active" : "inactive")}</td>
+                <td><button type="button" class="btn-inline" data-focus-store="${store.id}">Ver</button></td>
+            </tr>`
+        );
+    });
+}
+
+function renderProducts() {
+    const body = document.getElementById("products-body");
+    if (!body) return;
+    body.innerHTML = "";
+    if (!state.products.length) {
+        body.innerHTML = `<tr><td colspan="6">No hay productos registrados.</td></tr>`;
+        return;
+    }
+    state.products.forEach((product) => {
+        body.insertAdjacentHTML(
+            "beforeend",
+            `<tr>
+                <td>${escapeHtml(product.name)}</td>
+                <td>${productTypeLabel(product.product_type)}</td>
+                <td>${escapeHtml(product.presentation || "-")}</td>
+                <td>Q ${Number(product.unit_price).toFixed(2)}</td>
+                <td>${Number(product.unit_weight_kg).toFixed(2)} kg</td>
+                <td>${statusChip(product.is_active ? "active" : "inactive")}</td>
+            </tr>`
+        );
+    });
+}
+
+function renderProductSelects() {
+    const select = document.getElementById("order-product");
+    if (!select) return;
+    const activeProducts = state.products.filter((product) => product.is_active);
+    select.innerHTML = [
+        `<option value="">Seleccione producto...</option>`,
+        ...activeProducts.map((product) => {
+            const label = `${product.name} ${product.presentation || ""} - Q ${Number(product.unit_price).toFixed(2)}`;
+            return `<option value="${product.id}">${escapeHtml(label)}</option>`;
+        })
+    ].join("");
+}
+
+function updateOrderEstimate() {
+    const form = document.getElementById("order-form");
+    if (!form) return;
+    const product = state.products.find((item) => String(item.id) === form.product_id.value);
+    const quantity = Number(form.quantity.value || 0);
+    if (!product || !quantity) {
+        form.weight_kg.value = "";
+        form.total_amount.value = "";
+        return;
+    }
+    form.weight_kg.value = (Number(product.unit_weight_kg) * quantity).toFixed(2);
+    form.total_amount.value = `Q ${(Number(product.unit_price) * quantity).toFixed(2)}`;
+}
+
 function renderDepartments() {
     const body = document.getElementById("departments-body");
     if (!body) return;
     body.innerHTML = "";
     if (!state.departments.length) {
-        body.innerHTML = `<tr><td colspan="4">No hay departamentos registrados.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="4">No hay zonas registradas.</td></tr>`;
         return;
     }
     state.departments.forEach((d) => {
@@ -371,12 +508,12 @@ function renderDepartments() {
 function renderDriverSelects() {
     const activeDrivers = state.drivers.filter((d) => d.is_active);
     const opts = [
-        `<option value="">Sin conductor</option>`,
+        `<option value="">Sin repartidor</option>`,
         ...activeDrivers.map((d) => `<option value="${d.id}">${escapeHtml(d.name)} (${escapeHtml(d.license_number)})</option>`)
     ].join("");
     document.getElementById("vehicle-driver").innerHTML = opts;
     document.getElementById("planner-driver").innerHTML = [
-        `<option value="">Sin conductor asignado</option>`,
+        `<option value="">Sin repartidor asignado</option>`,
         ...activeDrivers.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`)
     ].join("");
 }
@@ -385,7 +522,7 @@ function renderVehicles() {
     const body = document.getElementById("vehicles-body");
     body.innerHTML = "";
     if (!state.vehicles.length) {
-        body.innerHTML = `<tr><td colspan="8">No hay vehículos registrados.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="8">No hay vehiculos registrados.</td></tr>`;
         return;
     }
     state.vehicles.forEach((v) => {
@@ -409,7 +546,7 @@ function renderDrivers() {
     const body = document.getElementById("drivers-body");
     body.innerHTML = "";
     if (!state.drivers.length) {
-        body.innerHTML = `<tr><td colspan="4">No hay conductores registrados.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="4">No hay repartidores registrados.</td></tr>`;
         return;
     }
     state.drivers.forEach((d) => {
@@ -440,18 +577,20 @@ function renderOrdersFiltered() {
     const body = document.getElementById("orders-body");
     body.innerHTML = "";
     if (!filtered.length) {
-        body.innerHTML = `<tr><td colspan="7">No hay pedidos con estos filtros.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="8">No hay entregas con estos filtros.</td></tr>`;
         return;
     }
     filtered.forEach((o) => {
+        const products = (o.items || []).map((item) => `${item.quantity} x ${item.product_name}`).join(", ") || `${o.package_count} unidades`;
         body.insertAdjacentHTML(
             "beforeend",
             `<tr>
                 <td>${escapeHtml(o.code)}</td>
                 <td>${escapeHtml(o.origin_name)}</td>
-                <td>${escapeHtml(o.destination_name)}</td>
+                <td>${escapeHtml(o.store_name || o.destination_name)}</td>
                 <td>${o.weight_kg.toFixed(2)} kg</td>
-                <td>${o.package_count}</td>
+                <td>${escapeHtml(products)}</td>
+                <td>Q ${Number(o.balance_due || 0).toFixed(2)}</td>
                 <td>${priorityLabel(o.priority)}</td>
                 <td>${statusChip(o.status)}</td>
             </tr>`
@@ -459,11 +598,92 @@ function renderOrdersFiltered() {
     });
 }
 
+function renderPaymentStoreSelect() {
+    const select = document.getElementById("payment-store");
+    if (!select) return;
+    const previous = select.value;
+    const options = [
+        `<option value="">Seleccione tienda...</option>`,
+        ...state.stores.filter((store) => store.is_active).map((store) => `<option value="${store.id}">${escapeHtml(store.name)}</option>`)
+    ].join("");
+    select.innerHTML = options;
+    if (previous) select.value = previous;
+}
+
+function renderPaymentOrderSelect() {
+    const select = document.getElementById("payment-order");
+    const storeSelect = document.getElementById("payment-store");
+    if (!select || !storeSelect) return;
+    const storeId = storeSelect.value;
+    const storeOrders = state.orders.filter((order) => String(order.store_id || "") === storeId && Number(order.balance_due || 0) > 0);
+    select.innerHTML = [
+        `<option value="">Sin pedido especifico</option>`,
+        ...storeOrders.map((order) => `<option value="${order.id}">${escapeHtml(order.code)} - saldo Q ${Number(order.balance_due || 0).toFixed(2)}</option>`)
+    ].join("");
+}
+
+function renderPayments() {
+    const body = document.getElementById("payments-body");
+    if (!body) return;
+    body.innerHTML = "";
+    if (!state.payments.length) {
+        body.innerHTML = `<tr><td colspan="6">No hay cobros registrados.</td></tr>`;
+        return;
+    }
+    state.payments.forEach((payment) => {
+        body.insertAdjacentHTML(
+            "beforeend",
+            `<tr>
+                <td>${escapeHtml(payment.store_name)}</td>
+                <td>${escapeHtml(payment.order_code || "-")}</td>
+                <td>Q ${Number(payment.amount).toFixed(2)}</td>
+                <td>${paymentTypeLabel(payment.payment_type)}</td>
+                <td>${paymentMethodLabel(payment.method)}</td>
+                <td>${escapeHtml(payment.sync_status)}</td>
+            </tr>`
+        );
+    });
+}
+
+function renderBalances() {
+    const body = document.getElementById("balances-body");
+    if (!body) return;
+    body.innerHTML = "";
+    if (!state.balances.length) {
+        body.innerHTML = `<tr><td colspan="6">No hay saldos pendientes.</td></tr>`;
+        return;
+    }
+    state.balances.forEach((row) => {
+        body.insertAdjacentHTML(
+            "beforeend",
+            `<tr>
+                <td>${escapeHtml(row.store_name)}</td>
+                <td>${escapeHtml(row.municipality || "-")}</td>
+                <td>${escapeHtml(row.neighborhood || "-")}</td>
+                <td>Q ${Number(row.sales_total).toFixed(2)}</td>
+                <td>Q ${Number(row.paid_total).toFixed(2)}</td>
+                <td><strong>Q ${Number(row.balance_due).toFixed(2)}</strong></td>
+            </tr>`
+        );
+    });
+}
+
+function renderReport() {
+    const report = state.report;
+    if (!report) return;
+    setText("report-sales", Number(report.sales_total).toFixed(2));
+    setText("report-paid", Number(report.paid_total).toFixed(2));
+    setText("report-balance", Number(report.balance_due).toFixed(2));
+    setText("report-orders", report.orders);
+    setText("report-trips", report.trips);
+    setText("report-fuel", Number(report.fuel_cost_gtq).toFixed(2));
+}
+
 function renderPlannerInputs() {
     const vehicleSelect = document.getElementById("planner-vehicle");
     const activeVehicles = state.vehicles.filter((v) => v.is_active);
     vehicleSelect.innerHTML = [
-        `<option value="">Seleccione un vehículo...</option>`,
+        `<option value="">Seleccione un vehiculo...</option>`,
         ...activeVehicles.map((v) => `<option value="${v.id}">${escapeHtml(v.plate)} - ${escapeHtml(v.model)}</option>`)
     ].join("");
 
@@ -471,7 +691,7 @@ function renderPlannerInputs() {
     const checklist = document.getElementById("planner-orders-list");
     checklist.innerHTML = "";
     if (!pendingOrders.length) {
-        checklist.innerHTML = `<p>No hay pedidos pendientes.</p>`;
+        checklist.innerHTML = `<p>No hay entregas pendientes.</p>`;
         return;
     }
     pendingOrders.forEach((order) => {
@@ -480,7 +700,7 @@ function renderPlannerInputs() {
             `<label class="check-item">
                 <input type="checkbox" value="${order.id}" name="order_ids">
                 <span>
-                    <strong>${escapeHtml(order.code)}</strong> ${escapeHtml(order.origin_name)} -> ${escapeHtml(order.destination_name)}
+                    <strong>${escapeHtml(order.code)}</strong> ${escapeHtml(order.origin_name)} -> ${escapeHtml(order.store_name || order.destination_name)}
                     <br>
                     <small>${order.weight_kg.toFixed(2)} kg | ${order.package_count} productos | prioridad ${priorityLabel(order.priority)}</small>
                 </span>
@@ -514,7 +734,7 @@ function renderTripsFiltered() {
     const body = document.getElementById("trips-body");
     body.innerHTML = "";
     if (!filtered.length) {
-        body.innerHTML = `<tr><td colspan="9">No hay viajes con estos filtros.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="9">No hay rutas con estos filtros.</td></tr>`;
         return;
     }
     filtered.forEach((trip) => {
@@ -669,6 +889,23 @@ async function focusMapTripById(tripId, options = {}) {
             return dept && dept.latitude ? [Number(dept.longitude), Number(dept.latitude)] : null;
         })
         .filter(Boolean);
+    const routeLabels = [...trip.route_nodes];
+
+    const storeStops = [];
+    trip.orders.forEach((order) => {
+        if (!order.store_latitude || !order.store_longitude) return;
+        const key = `${order.store_latitude},${order.store_longitude}`;
+        if (storeStops.some((stop) => stop.key === key)) return;
+        storeStops.push({
+            key,
+            name: order.store_name || order.destination_name,
+            coords: [Number(order.store_longitude), Number(order.store_latitude)]
+        });
+    });
+    storeStops.forEach((stop) => {
+        waypointCoords.push(stop.coords);
+        routeLabels.push(stop.name);
+    });
 
     if (waypointCoords.length < 2) {
         selectedMapTripId = null;
@@ -689,7 +926,7 @@ async function focusMapTripById(tripId, options = {}) {
             const marker = new google.maps.Marker({
                 position: { lat, lng },
                 map,
-                title: trip.route_nodes[index] || "",
+                title: routeLabels[index] || "",
                 icon: {
                     path: google.maps.SymbolPath.CIRCLE,
                     scale: isFirst || isLast ? 10 : 7,
@@ -727,6 +964,8 @@ async function focusMapTripById(tripId, options = {}) {
 function updateMapData() {
     gmapMarkers.forEach((m) => m.setMap(null));
     gmapMarkers = [];
+    gmapStoreMarkers.forEach((m) => m.setMap(null));
+    gmapStoreMarkers = [];
     gmapConnections.forEach((p) => p.setMap(null));
     gmapConnections = [];
 
@@ -777,6 +1016,47 @@ function updateMapData() {
         gmapMarkers.push(marker);
     });
 
+    state.stores.filter((store) => store.is_active && store.latitude && store.longitude).forEach((store) => {
+        const marker = new google.maps.Marker({
+            position: { lat: Number(store.latitude), lng: Number(store.longitude) },
+            map,
+            title: store.name,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 13,
+                fillColor: store.product_type === "gas" ? "#ef4444" : "#0ea5a4",
+                fillOpacity: 1,
+                strokeColor: "#0f172a",
+                strokeWeight: 2.5
+            },
+            label: {
+                text: "T",
+                color: "#ffffff",
+                fontSize: "12px",
+                fontWeight: "bold"
+            },
+            zIndex: 24
+        });
+        marker.storeId = store.id;
+        marker.addListener("click", () => {
+            if (activeInfoWindow) activeInfoWindow.close();
+            activeInfoWindow = new google.maps.InfoWindow({
+                content: `
+                    <div style="font-family:sans-serif;max-width:240px;padding:2px">
+                        <strong>${escapeHtml(store.name)}</strong><br>
+                        <small>${escapeHtml(productTypeLabel(store.product_type))} | ${escapeHtml(store.department_name)}</small><br>
+                        <small>${escapeHtml(store.municipality || "Sin municipio")} / ${escapeHtml(store.neighborhood || "Sin colonia")}</small><br>
+                        <small>${escapeHtml(store.phone || "Sin telefono")}</small><br>
+                        <small><strong>Direccion:</strong> ${escapeHtml(store.address || "Sin direccion")}</small><br>
+                        <small><strong>Referencia:</strong> ${escapeHtml(store.reference || "-")}</small><br>
+                        <small>GPS: ${Number(store.latitude).toFixed(6)}, ${Number(store.longitude).toFixed(6)}</small>
+                    </div>`
+            });
+            activeInfoWindow.open(map, marker);
+        });
+        gmapStoreMarkers.push(marker);
+    });
+
     if (selectedMapTripId && state.trips.some((t) => t.id === selectedMapTripId)) {
         focusMapTripById(selectedMapTripId, { shouldFit: false });
         return;
@@ -801,9 +1081,11 @@ function clearHighlightedRoute() {
 function fitMapToDepartments() {
     if (mapHasAutoFit) return;
     const depts = state.departments.filter((d) => d.latitude && d.longitude);
-    if (depts.length < 2) return;
+    const stores = state.stores.filter((store) => store.is_active && store.latitude && store.longitude);
+    if (depts.length + stores.length < 2) return;
     const bounds = new google.maps.LatLngBounds();
     depts.forEach((d) => bounds.extend({ lat: Number(d.latitude), lng: Number(d.longitude) }));
+    stores.forEach((store) => bounds.extend({ lat: Number(store.latitude), lng: Number(store.longitude) }));
     map.fitBounds(bounds);
     mapHasAutoFit = true;
 }
@@ -814,7 +1096,7 @@ function updateMapRouteSummary(trip) {
     if (!summary || !hint) return;
     if (!trip) {
         summary.classList.add("is-empty");
-        hint.textContent = "Selecciona un viaje para ver la ruta óptima destacada.";
+        hint.textContent = "Selecciona una ruta para ver el recorrido destacado.";
         setSummaryField("map-summary-code", "-");
         setSummaryField("map-summary-origin", "-");
         setSummaryField("map-summary-destination", "-");
@@ -826,9 +1108,12 @@ function updateMapRouteSummary(trip) {
     }
     summary.classList.remove("is-empty");
     hint.textContent = "Ruta resaltada con nodos de inicio, intermedios y fin.";
+    const storeNames = trip.orders
+        .map((order) => order.store_name)
+        .filter(Boolean);
     setSummaryField("map-summary-code", escapeHtml(trip.code));
     setSummaryField("map-summary-origin", escapeHtml(trip.origin_name));
-    setSummaryField("map-summary-destination", escapeHtml(trip.destination_name));
+    setSummaryField("map-summary-destination", escapeHtml(storeNames.length ? storeNames.join(", ") : trip.destination_name));
     setSummaryField("map-summary-distance", `${trip.total_distance_km.toFixed(2)} km`);
     setSummaryField("map-summary-cost", `Q ${trip.estimated_cost.toFixed(2)}`);
     setSummaryField("map-summary-fuel", `${trip.estimated_fuel_gallons.toFixed(2)} gal`);
@@ -846,11 +1131,11 @@ function calcBearing(p1, p2) {
 
 function startGpsSimulation() {
     if (!selectedMapTripId) {
-        showToast("Selecciona un viaje en el mapa primero.", true);
+        showToast("Selecciona una ruta en el mapa primero.", true);
         return;
     }
     if (!lastDirectionsResult || !lastDirectionsResult.routes.length) {
-        showToast("Espera que cargue la ruta vial o selecciona un viaje distinto.", true);
+        showToast("Espera que cargue la ruta vial o selecciona una ruta distinta.", true);
         return;
     }
     stopGpsSimulation();
@@ -872,7 +1157,7 @@ function startGpsSimulation() {
     gpsSimMarker = new google.maps.Marker({
         position: path[0],
         map,
-        title: "Vehículo en ruta",
+        title: "Vehiculo en ruta",
         icon: carIcon,
         zIndex: 30
     });
@@ -886,7 +1171,7 @@ function startGpsSimulation() {
         step++;
         if (step >= path.length) {
             stopGpsSimulation();
-            showToast("Simulación GPS completada.");
+            showToast("Simulacion GPS completada.");
             return;
         }
         gpsSimMarker.setPosition(path[step]);
@@ -909,6 +1194,67 @@ function stopGpsSimulation() {
     if (startBtn) startBtn.style.display = "";
     if (stopBtn) stopBtn.style.display = "none";
     if (hint) hint.textContent = "";
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function simulateDelivery(tripId) {
+    if (deliverySimTimer) {
+        showToast("Ya hay una simulacion de entrega en curso.", true);
+        return;
+    }
+    if (!tripId) {
+        showToast("Selecciona una ruta para simular la entrega.", true);
+        return;
+    }
+
+    let trip = state.trips.find((item) => item.id === tripId);
+    if (!trip) {
+        showToast("No se encontro la ruta seleccionada.", true);
+        return;
+    }
+    if (trip.status === "completed" || trip.status === "canceled") {
+        showToast("Esta ruta ya no se puede simular porque esta cerrada.", true);
+        return;
+    }
+
+    deliverySimTimer = window.setTimeout(() => {}, 1);
+    try {
+        document.querySelector('[data-tab="map"]')?.click();
+        await focusMapTripById(tripId, { shouldFit: true });
+        startGpsSimulation();
+
+        if (trip.status === "planned") {
+            await postJson(`/api/trips/${tripId}/action/`, { action: "start" });
+            showToast("Simulacion: ruta iniciada.");
+            await reloadAll();
+            trip = state.trips.find((item) => item.id === tripId) || trip;
+            await focusMapTripById(tripId, { shouldFit: false });
+            startGpsSimulation();
+        }
+
+        const stops = trip.orders.length ? trip.orders : [{ destination_name: trip.destination_name, package_count: 1 }];
+        for (const [index, order] of stops.entries()) {
+            await sleep(1100);
+            const paidMode = index % 3 === 1 ? "abono parcial registrado" : "pago contado registrado";
+            const note = `Simulacion: visita ${index + 1}/${stops.length} en ${order.destination_name}; ${order.package_count} producto(s); ${paidMode}.`;
+            await postJson(`/api/trips/${tripId}/events/`, { note });
+            showToast(`Simulacion: visita ${index + 1} registrada.`);
+        }
+
+        await sleep(900);
+        await postJson(`/api/trips/${tripId}/action/`, { action: "complete" });
+        showToast("Simulacion completada: entrega marcada como finalizada.");
+        await reloadAll();
+        focusMapTripById(tripId, { shouldFit: false });
+    } catch (error) {
+        showToast(error.message, true);
+    } finally {
+        window.clearTimeout(deliverySimTimer);
+        deliverySimTimer = null;
+    }
 }
 
 function setSummaryField(id, value) {
@@ -939,10 +1285,137 @@ async function onVehicleSubmit(event) {
     try {
         await postJson(API.vehicles, payload);
         form.reset();
-        showToast("Vehículo registrado.");
+        showToast("Vehiculo registrado.");
         await reloadAll();
     } catch (error) {
         showToast(error.message, true);
+    }
+}
+
+function addressPart(result, type) {
+    const part = result.address_components?.find((component) => component.types.includes(type));
+    return part ? part.long_name : "";
+}
+
+function reverseGeocodeStorePosition(lat, lng) {
+    if (!window.google?.maps?.Geocoder) return;
+    const geocoder = new google.maps.Geocoder();
+    const form = document.getElementById("store-form");
+    const status = document.getElementById("store-gps-status");
+    geocoder.geocode({ location: { lat, lng } }, (results, geoStatus) => {
+        if (geoStatus !== "OK" || !results?.length) {
+            if (status) status.textContent = "GPS capturado; no se encontro direccion automatica.";
+            return;
+        }
+        const best = results[0];
+        if (!form.address.value) form.address.value = best.formatted_address || "";
+        if (!form.municipality.value) {
+            form.municipality.value =
+                addressPart(best, "locality") ||
+                addressPart(best, "administrative_area_level_2") ||
+                addressPart(best, "administrative_area_level_1");
+        }
+        if (!form.neighborhood.value) {
+            form.neighborhood.value =
+                addressPart(best, "neighborhood") ||
+                addressPart(best, "sublocality") ||
+                addressPart(best, "sublocality_level_1");
+        }
+        if (status) status.textContent = "GPS y direccion detectados. Revisa los datos antes de guardar.";
+    });
+}
+
+function fillStoreGpsFromDevice() {
+    if (!navigator.geolocation) {
+        showToast("Este navegador no permite obtener GPS.", true);
+        return;
+    }
+    showToast("Solicitando ubicacion GPS...");
+    const status = document.getElementById("store-gps-status");
+    if (status) status.textContent = "Buscando tu ubicacion real...";
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const form = document.getElementById("store-form");
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            form.latitude.value = lat.toFixed(6);
+            form.longitude.value = lng.toFixed(6);
+            const accuracy = Math.round(position.coords.accuracy || 0);
+            if (status) status.textContent = `GPS capturado con precision aproximada de ${accuracy} m.`;
+            reverseGeocodeStorePosition(lat, lng);
+            showToast("GPS real capturado para la tienda.");
+        },
+        () => {
+            if (status) status.textContent = "No se pudo obtener GPS. Revisa permisos del navegador.";
+            showToast("No se pudo obtener la ubicacion. Revisa permisos del navegador.", true);
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+}
+
+async function onStoreSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = {
+        name: form.name.value.trim(),
+        contact_name: form.contact_name.value.trim(),
+        phone: form.phone.value.trim(),
+        municipality: form.municipality.value.trim(),
+        neighborhood: form.neighborhood.value.trim(),
+        department_id: Number(form.department_id.value),
+        product_type: form.product_type.value,
+        address: form.address.value.trim(),
+        reference: form.reference.value.trim(),
+        latitude: Number(form.latitude.value),
+        longitude: Number(form.longitude.value),
+        is_active: form.is_active.checked
+    };
+    try {
+        const response = await postJson(API.stores, payload);
+        form.reset();
+        const status = document.getElementById("store-gps-status");
+        if (status) status.textContent = "";
+        showToast("Tienda registrada con GPS.");
+        await reloadAll();
+        focusStoreById(response.store.id);
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
+
+function onOrderStoreChange(event) {
+    const storeId = Number(event.target.value || 0);
+    const destination = document.getElementById("order-destination");
+    if (!storeId || !destination) {
+        if (destination) destination.disabled = false;
+        return;
+    }
+    const store = state.stores.find((item) => item.id === storeId);
+    if (!store) return;
+    destination.value = String(store.department_id);
+    destination.disabled = true;
+}
+
+function onStoresActionClick(event) {
+    const button = event.target.closest("button[data-focus-store]");
+    if (!button) return;
+    focusStoreById(Number(button.dataset.focusStore));
+}
+
+function focusStoreById(storeId) {
+    const store = state.stores.find((item) => item.id === storeId);
+    if (!store || !store.latitude || !store.longitude) {
+        showToast("Esta tienda no tiene coordenadas GPS validas.", true);
+        return;
+    }
+    document.querySelector('[data-tab="map"]')?.click();
+    if (!map) renderMap();
+    const position = { lat: Number(store.latitude), lng: Number(store.longitude) };
+    map.setZoom(17);
+    map.panTo(position);
+    const marker = gmapStoreMarkers.find((item) => item.storeId === storeId);
+    if (marker) {
+        google.maps.event.trigger(marker, "click");
     }
 }
 
@@ -958,7 +1431,30 @@ async function onDriverSubmit(event) {
     try {
         await postJson(API.drivers, payload);
         form.reset();
-        showToast("Conductor registrado.");
+        showToast("Repartidor registrado.");
+        await reloadAll();
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
+
+async function onProductSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = {
+        name: form.name.value.trim(),
+        product_type: form.product_type.value,
+        presentation: form.presentation.value.trim(),
+        unit_price: Number(form.unit_price.value),
+        unit_weight_kg: Number(form.unit_weight_kg.value),
+        is_active: form.is_active.checked
+    };
+    try {
+        await postJson(API.products, payload);
+        form.reset();
+        form.is_active.checked = true;
+        form.unit_weight_kg.value = "1.00";
+        showToast("Producto registrado.");
         await reloadAll();
     } catch (error) {
         showToast(error.message, true);
@@ -968,18 +1464,68 @@ async function onDriverSubmit(event) {
 async function onOrderSubmit(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    const product = state.products.find((item) => String(item.id) === form.product_id.value);
+    if (!product) {
+        showToast("Selecciona un producto.", true);
+        return;
+    }
+    const quantity = Number(form.quantity.value || 0);
     const payload = {
         origin_id: Number(form.origin_id.value),
         destination_id: Number(form.destination_id.value),
-        weight_kg: Number(form.weight_kg.value),
-        package_count: Number(form.package_count.value),
+        store_id: form.store_id.value ? Number(form.store_id.value) : null,
+        weight_kg: Number(form.weight_kg.value || product.unit_weight_kg),
+        package_count: quantity,
+        items: [{
+            product_id: product.id,
+            quantity,
+            unit_price: product.unit_price
+        }],
         priority: form.priority.value
     };
     try {
         await postJson(API.orders, payload);
         form.reset();
-        showToast("Pedido creado.");
+        form.destination_id.disabled = false;
+        showToast("Entrega creada.");
         await reloadAll();
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
+
+async function onPaymentSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = {
+        store_id: Number(form.store_id.value),
+        order_id: form.order_id.value ? Number(form.order_id.value) : null,
+        amount: Number(form.amount.value),
+        payment_type: form.payment_type.value,
+        method: form.method.value,
+        note: form.note.value.trim(),
+        uuid: window.crypto && crypto.randomUUID ? crypto.randomUUID() : undefined
+    };
+    try {
+        await postJson(API.payments, payload);
+        form.reset();
+        showToast("Cobro registrado.");
+        await reloadAll();
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
+
+async function reloadReport() {
+    try {
+        const params = [];
+        const from = document.getElementById("report-date-from").value;
+        const to = document.getElementById("report-date-to").value;
+        if (from) params.push(`date_from=${from}`);
+        if (to) params.push(`date_to=${to}`);
+        const res = await getJson(params.length ? `${API.reports}?${params.join("&")}` : API.reports);
+        state.report = res.report;
+        renderReport();
     } catch (error) {
         showToast(error.message, true);
     }
@@ -992,12 +1538,12 @@ async function onPlannerSubmit(event) {
         document.querySelectorAll("#planner-orders-list input[name='order_ids']:checked")
     ).map((node) => Number(node.value));
     if (!selectedOrders.length) {
-        showToast("Selecciona al menos un pedido.", true);
+        showToast("Selecciona al menos una entrega.", true);
         return;
     }
     const vehicleId = Number(form.vehicle_id.value);
     if (!vehicleId) {
-        showToast("Selecciona un vehículo.", true);
+        showToast("Selecciona un vehiculo.", true);
         return;
     }
     const driverId = form.driver_id.value ? Number(form.driver_id.value) : null;
@@ -1008,7 +1554,7 @@ async function onPlannerSubmit(event) {
             order_ids: selectedOrders
         });
         showPlannerResult(response.trip);
-        showToast("Viaje planificado correctamente.");
+        showToast("Ruta planificada correctamente.");
         await reloadAll();
     } catch (error) {
         showToast(error.message, true);
@@ -1016,13 +1562,19 @@ async function onPlannerSubmit(event) {
 }
 
 async function onTripsActionClick(event) {
+    const simulateButton = event.target.closest("button[data-simulate-delivery]");
+    if (simulateButton) {
+        await simulateDelivery(Number(simulateButton.dataset.tripId));
+        return;
+    }
+
     const button = event.target.closest("button[data-action]");
     if (!button) return;
     const tripId = Number(button.dataset.tripId);
     const action = button.dataset.action;
     try {
         await postJson(`/api/trips/${tripId}/action/`, { action });
-        showToast(`Acción "${action}" ejecutada.`);
+        showToast(`Accion "${action}" ejecutada.`);
         await reloadAll();
     } catch (error) {
         showToast(error.message, true);
@@ -1035,7 +1587,7 @@ async function onEventSubmit(event) {
     const tripId = Number(form.trip_id.value);
     const note = form.note.value.trim();
     if (!tripId || !note) {
-        showToast("Debes seleccionar viaje y escribir evento.", true);
+        showToast("Debes seleccionar una ruta y escribir el registro.", true);
         return;
     }
     try {
@@ -1060,7 +1612,7 @@ async function onDepartmentSubmit(event) {
     try {
         await postJson(API.departments, payload);
         form.reset();
-        showToast("Departamento registrado.");
+        showToast("Zona registrada.");
         await reloadAll();
     } catch (error) {
         showToast(error.message, true);
@@ -1098,16 +1650,16 @@ function showPlannerResult(trip) {
         ? `<p><strong>Costo de combustible:</strong> Q ${trip.estimated_fuel_cost_gtq.toFixed(2)} <small>(Q ${trip.fuel_price_gtq_gal?.toFixed(2)}/gal al momento)</small></p>`
         : "";
     box.innerHTML = `
-        <h3>Resultado de planificación</h3>
-        <p><strong>Código:</strong> ${escapeHtml(trip.code)}</p>
-        <p><strong>Vehículo:</strong> ${escapeHtml(trip.vehicle_plate)}</p>
-        <p><strong>Conductor:</strong> ${escapeHtml(trip.driver_name || "No asignado")}</p>
-        <p><strong>Ruta óptima:</strong> ${escapeHtml(trip.route_nodes.join(" → "))}</p>
+        <h3>Resultado de planificacion</h3>
+        <p><strong>Codigo:</strong> ${escapeHtml(trip.code)}</p>
+        <p><strong>Vehiculo:</strong> ${escapeHtml(trip.vehicle_plate)}</p>
+        <p><strong>Repartidor:</strong> ${escapeHtml(trip.driver_name || "No asignado")}</p>
+        <p><strong>Recorrido sugerido:</strong> ${escapeHtml(trip.route_nodes.join(" -> "))}</p>
         <p><strong>Distancia:</strong> ${trip.total_distance_km.toFixed(2)} km</p>
         <p><strong>Combustible estimado:</strong> ${trip.estimated_fuel_gallons.toFixed(2)} galones</p>
         ${fuelCostLine}
-        <p><strong>Costo operativo estimado:</strong> Q ${trip.estimated_cost.toFixed(2)}</p>
-        <p><strong>Pedidos asociados:</strong> ${trip.orders.length}</p>
+        <p><strong>Cobro/costo estimado:</strong> Q ${trip.estimated_cost.toFixed(2)}</p>
+        <p><strong>Entregas asociadas:</strong> ${trip.orders.length}</p>
     `;
 }
 
@@ -1115,15 +1667,18 @@ function buildTripActions(trip) {
     const role = state.currentUser ? state.currentUser.role : "operator";
     if (role === "operator") return "—";
     if (trip.status === "completed" || trip.status === "canceled") return "Sin acciones";
+    const simButton = `<button class="btn-inline btn-neutral" data-simulate-delivery="1" data-trip-id="${trip.id}">Simular entrega</button>`;
     if (trip.status === "planned") {
         return `
             <button class="btn-inline" data-action="start" data-trip-id="${trip.id}">Iniciar</button>
             <button class="btn-inline btn-neutral" data-action="complete" data-trip-id="${trip.id}">Completar</button>
+            ${simButton}
             <button class="btn-inline btn-danger" data-action="cancel" data-trip-id="${trip.id}">Cancelar</button>
         `;
     }
     return `
         <button class="btn-inline btn-neutral" data-action="complete" data-trip-id="${trip.id}">Completar</button>
+        ${simButton}
         <button class="btn-inline btn-danger" data-action="cancel" data-trip-id="${trip.id}">Cancelar</button>
     `;
 }
@@ -1212,7 +1767,7 @@ async function postJson(url, payload) {
 
 function statusLabel(status) {
     const labels = {
-        pending: "Pendiente", assigned: "Asignado", in_transit: "En tránsito",
+        pending: "Pendiente", assigned: "Asignado", in_transit: "En ruta",
         delivered: "Entregado", canceled: "Cancelado",
         planned: "Planificado", in_progress: "En progreso", completed: "Completado"
     };
@@ -1222,6 +1777,21 @@ function statusLabel(status) {
 function priorityLabel(priority) {
     const labels = { low: "Baja", normal: "Normal", high: "Alta" };
     return labels[priority] || priority;
+}
+
+function productTypeLabel(productType) {
+    const labels = { water: "Agua", gas: "Gas", both: "Agua y gas" };
+    return labels[productType] || productType;
+}
+
+function paymentTypeLabel(paymentType) {
+    const labels = { full_payment: "Pago completo", partial_payment: "Abono", credit: "Credito" };
+    return labels[paymentType] || paymentType;
+}
+
+function paymentMethodLabel(method) {
+    const labels = { cash: "Efectivo", transfer: "Transferencia", other: "Otro" };
+    return labels[method] || method;
 }
 
 function statusChip(status) {

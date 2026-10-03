@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>JaironRoute | Optimizacion de Rutas</title>
+    <title>Flamia | Rutas y cobros offline</title>
     <link rel="stylesheet" href="{% static 'logistics/style.css' %}">
 </head>
 <body>
@@ -13,11 +13,11 @@
         <header class="hero">
             <div class="hero-top">
                 <div class="hero-brand">
-                    <img class="brand-logo" src="{% static 'logistics/brand/rutas_astar_logo_logistica_gt.svg' %}" alt="Rutas A*">
+                    <img class="brand-logo" src="{% static 'logistics/brand/flamia-logo.svg' %}" alt="Flamia">
                     <div class="hero-copy">
-                        <p class="chip">Sistema Web de Distribucion</p>
-                        <h1>JaironRoute</h1>
-                        <p class="subtitle">Optimizacion inteligente de rutas y control operativo de viajes en Guatemala.</p>
+                        <p class="chip">Offline-first para reparto local</p>
+                        <h1>Flamia</h1>
+                        <p class="subtitle">Sistema offline de rutas, entregas y cobros para negocios de agua purificada y gas.</p>
                     </div>
                 </div>
                 <div class="user-info" id="user-info">
@@ -32,14 +32,18 @@
         </header>
 
         <nav class="tabs">
-            <button class="tab is-active" data-tab="dashboard">Dashboard</button>
-            <button class="tab" data-tab="vehicles">Vehículos</button>
-            <button class="tab" data-tab="drivers">Conductores</button>
-            <button class="tab" data-tab="orders">Pedidos</button>
+            <button class="tab is-active" data-tab="dashboard">Control diario</button>
+            <button class="tab" data-tab="vehicles">Vehiculos</button>
+            <button class="tab" data-tab="stores">Tiendas</button>
+            <button class="tab" data-tab="products">Productos</button>
+            <button class="tab" data-tab="drivers">Repartidores</button>
+            <button class="tab" data-tab="orders">Entregas</button>
+            <button class="tab" data-tab="payments">Cobros</button>
             <button class="tab" data-tab="planner">Planificador</button>
-            <button class="tab" data-tab="trips">Viajes</button>
+            <button class="tab" data-tab="trips">Rutas</button>
+            <button class="tab" data-tab="reports">Reportes</button>
             <button class="tab" data-tab="map">Mapa</button>
-            <button class="tab tab-admin" data-tab="departments" id="tab-departments-btn" style="display:none">Departamentos</button>
+            <button class="tab tab-admin" data-tab="departments" id="tab-departments-btn" style="display:none">Zonas</button>
             <button class="tab tab-admin" data-tab="users" id="tab-users-btn" style="display:none">Usuarios</button>
         </nav>
 
@@ -53,11 +57,11 @@
                     <button class="btn-filter" id="dash-filter-btn">Filtrar</button>
                     <button class="btn-filter btn-clear" id="dash-clear-btn">Limpiar</button>
                 </div>
-                <!-- Precio de gasolina en tiempo real -->
+                <!-- Precio de combustible para reparto -->
                 <article class="fuel-price-card" id="fuel-price-card">
                     <div class="fuel-header">
                         <div>
-                            <h3>⛽ Precio de combustible</h3>
+                            <h3>Precio de combustible</h3>
                             <small id="fuel-updated-at">Cargando...</small>
                         </div>
                         <button class="btn-small" id="btn-edit-fuel" style="display:none">Actualizar precio</button>
@@ -81,23 +85,23 @@
 
                 <div class="cards-grid">
                     <article class="metric-card">
-                        <h3>Total viajes</h3>
+                        <h3>Rutas planificadas</h3>
                         <p id="metric-total-trips">0</p>
                     </article>
                     <article class="metric-card">
-                        <h3>Viajes activos</h3>
+                        <h3>Rutas activas</h3>
                         <p id="metric-active-trips">0</p>
                     </article>
                     <article class="metric-card">
-                        <h3>Pedidos pendientes</h3>
+                        <h3>Entregas pendientes</h3>
                         <p id="metric-pending-orders">0</p>
                     </article>
                     <article class="metric-card">
-                        <h3>Pedidos entregados</h3>
+                        <h3>Entregas completadas</h3>
                         <p id="metric-delivered-orders">0</p>
                     </article>
                     <article class="metric-card">
-                        <h3>Costo acumulado (Q)</h3>
+                        <h3>Cobros estimados (Q)</h3>
                         <p id="metric-total-cost">0.00</p>
                     </article>
                     <article class="metric-card">
@@ -108,22 +112,22 @@
 
                 <div class="charts-grid">
                     <article class="chart-card">
-                        <h3>Distribución por estado de viaje</h3>
+                        <h3>Distribucion por estado de ruta</h3>
                         <canvas id="status-chart" width="560" height="260"></canvas>
                     </article>
                     <article class="chart-card">
-                        <h3>Viajes en últimos 7 días</h3>
+                        <h3>Rutas de los ultimos 7 dias</h3>
                         <canvas id="timeline-chart" width="560" height="260"></canvas>
                     </article>
                 </div>
 
                 <article class="table-card">
-                    <h3>Vehículos con mayor actividad</h3>
+                    <h3>Vehiculos con mayor actividad</h3>
                     <table>
                         <thead>
                             <tr>
                                 <th>Placa</th>
-                                <th>Total viajes</th>
+                                <th>Total rutas</th>
                             </tr>
                         </thead>
                         <tbody id="vehicle-activity-body"></tbody>
@@ -135,15 +139,15 @@
             <section id="tab-vehicles" class="panel">
                 <div class="split">
                     <article class="form-card" id="vehicle-form-card">
-                        <h3>Registrar vehículo</h3>
+                        <h3>Registrar vehiculo de reparto</h3>
                         <form id="vehicle-form">
                             <label>Placa
                                 <input name="plate" required placeholder="C-123ABC">
                             </label>
                             <label>Modelo
-                                <input name="model" required placeholder="Isuzu NPR">
+                                <input name="model" required placeholder="Pickup, panel o camion de reparto">
                             </label>
-                            <label>Capacidad kg
+                            <label>Capacidad de carga
                                 <input name="capacity_kg" type="number" step="0.01" min="1" required>
                             </label>
                             <label>Eficiencia km/l
@@ -152,24 +156,24 @@
                             <label>Costo por km (Q)
                                 <input name="cost_per_km" type="number" step="0.01" min="0.1" required>
                             </label>
-                            <label>Conductor asignado
+                            <label>Repartidor asignado
                                 <select name="driver_id" id="vehicle-driver">
-                                    <option value="">Sin conductor</option>
+                                    <option value="">Sin repartidor</option>
                                 </select>
                             </label>
-                            <label>Departamento actual
+                            <label>Zona/base actual
                                 <select name="current_department_id" id="vehicle-current-department"></select>
                             </label>
                             <label class="inline">
                                 <input type="checkbox" name="is_active" checked>
-                                Vehículo activo
+                                Vehiculo activo
                             </label>
-                            <button type="submit">Guardar vehículo</button>
+                            <button type="submit">Guardar vehiculo</button>
                         </form>
                     </article>
 
                     <article class="table-card">
-                        <h3>Flota registrada</h3>
+                        <h3>Flota de reparto</h3>
                         <table>
                             <thead>
                                 <tr>
@@ -178,8 +182,8 @@
                                     <th>Capacidad</th>
                                     <th>Eficiencia</th>
                                     <th>Costo/km</th>
-                                    <th>Conductor</th>
-                                    <th>Ubicación</th>
+                                    <th>Repartidor</th>
+                                    <th>Zona/base</th>
                                     <th>Estado</th>
                                 </tr>
                             </thead>
@@ -189,36 +193,160 @@
                 </div>
             </section>
 
-            <!-- DRIVERS -->
-            <section id="tab-drivers" class="panel">
+            <!-- STORES -->
+            <section id="tab-stores" class="panel">
                 <div class="split">
-                    <article class="form-card" id="driver-form-card">
-                        <h3>Registrar conductor</h3>
-                        <form id="driver-form">
-                            <label>Nombre completo
-                                <input name="name" required placeholder="Juan Pérez">
+                    <article class="form-card" id="store-form-card">
+                        <h3>Registrar tienda o cliente</h3>
+                        <form id="store-form">
+                            <label>Nombre de tienda
+                                <input name="name" required placeholder="Tienda El Buen Precio">
                             </label>
-                            <label>Teléfono
+                            <label>Encargado
+                                <input name="contact_name" placeholder="Nombre de contacto">
+                            </label>
+                            <label>Telefono
                                 <input name="phone" placeholder="5555-1234">
                             </label>
-                            <label>No. de licencia
-                                <input name="license_number" required placeholder="L-12345678">
+                            <label>Zona/departamento
+                                <select name="department_id" id="store-department" required></select>
                             </label>
+                            <label>Municipio
+                                <input name="municipality" required placeholder="Guatemala, Mixco, Villa Nueva">
+                            </label>
+                            <label>Colonia o comunidad
+                                <input name="neighborhood" required placeholder="Bethania, El Milagro, San Felipe">
+                            </label>
+                            <label>Producto habitual
+                                <select name="product_type">
+                                    <option value="water">Agua purificada</option>
+                                    <option value="gas">Gas</option>
+                                    <option value="both">Agua y gas</option>
+                                </select>
+                            </label>
+                            <label>Direccion
+                                <input name="address" placeholder="Direccion o sector">
+                            </label>
+                            <label>Referencia
+                                <input name="reference" placeholder="Frente a mercado, porton azul, etc.">
+                            </label>
+                            <div class="split-compact">
+                                <label>Latitud
+                                    <input name="latitude" type="number" step="0.000001" required placeholder="14.634915">
+                                </label>
+                                <label>Longitud
+                                    <input name="longitude" type="number" step="0.000001" required placeholder="-90.506882">
+                                </label>
+                            </div>
+                            <button type="button" class="btn-small btn-neutral" id="btn-store-gps">Usar GPS actual</button>
+                            <small class="gps-sim-hint" id="store-gps-status"></small>
                             <label class="inline">
                                 <input type="checkbox" name="is_active" checked>
-                                Conductor activo
+                                Tienda activa
                             </label>
-                            <button type="submit">Guardar conductor</button>
+                            <button type="submit">Guardar tienda</button>
                         </form>
                     </article>
 
                     <article class="table-card">
-                        <h3>Conductores registrados</h3>
+                        <h3>Tiendas registradas</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Tienda</th>
+                                    <th>Zona</th>
+                                    <th>Producto</th>
+                                    <th>Telefono</th>
+                                    <th>Municipio</th>
+                                    <th>Colonia/comunidad</th>
+                                    <th>GPS</th>
+                                    <th>Estado</th>
+                                    <th>Mapa</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stores-body"></tbody>
+                        </table>
+                    </article>
+                </div>
+            </section>
+
+            <!-- PRODUCTS -->
+            <section id="tab-products" class="panel">
+                <div class="split">
+                    <article class="form-card" id="product-form-card">
+                        <h3>Registrar producto</h3>
+                        <form id="product-form">
+                            <label>Nombre
+                                <input name="name" required placeholder="Garrafon de agua, cilindro de gas">
+                            </label>
+                            <label>Tipo
+                                <select name="product_type">
+                                    <option value="water">Agua purificada</option>
+                                    <option value="gas">Gas</option>
+                                </select>
+                            </label>
+                            <label>Presentacion
+                                <input name="presentation" placeholder="5 galones, 25 libras">
+                            </label>
+                            <label>Precio unitario (Q)
+                                <input name="unit_price" type="number" step="0.01" min="0" required>
+                            </label>
+                            <label>Peso unitario (kg)
+                                <input name="unit_weight_kg" type="number" step="0.01" min="0.01" value="1.00" required>
+                            </label>
+                            <label class="check-inline"><input type="checkbox" name="is_active" checked> Activo</label>
+                            <button type="submit">Guardar producto</button>
+                        </form>
+                    </article>
+                    <article class="table-card">
+                        <h3>Catalogo de productos</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Tipo</th>
+                                    <th>Presentacion</th>
+                                    <th>Precio</th>
+                                    <th>Peso</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="products-body"></tbody>
+                        </table>
+                    </article>
+                </div>
+            </section>
+
+            <!-- DRIVERS -->
+            <section id="tab-drivers" class="panel">
+                <div class="split">
+                    <article class="form-card" id="driver-form-card">
+                        <h3>Registrar repartidor</h3>
+                        <form id="driver-form">
+                            <label>Nombre completo
+                                <input name="name" required placeholder="Juan Perez">
+                            </label>
+                            <label>Telefono
+                                <input name="phone" placeholder="5555-1234">
+                            </label>
+                            <label>No. de licencia o identificacion
+                                <input name="license_number" required placeholder="L-12345678">
+                            </label>
+                            <label class="inline">
+                                <input type="checkbox" name="is_active" checked>
+                                Repartidor activo
+                            </label>
+                            <button type="submit">Guardar repartidor</button>
+                        </form>
+                    </article>
+
+                    <article class="table-card">
+                        <h3>Repartidores registrados</h3>
                         <table>
                             <thead>
                                 <tr>
                                     <th>Nombre</th>
-                                    <th>Teléfono</th>
+                                    <th>Telefono</th>
                                     <th>Licencia</th>
                                     <th>Estado</th>
                                 </tr>
@@ -233,19 +361,30 @@
             <section id="tab-orders" class="panel">
                 <div class="split">
                     <article class="form-card" id="order-form-card">
-                        <h3>Crear pedido</h3>
+                        <h3>Crear entrega</h3>
                         <form id="order-form">
-                            <label>Origen
+                            <label>Tienda registrada
+                                <select name="store_id" id="order-store">
+                                    <option value="">Sin tienda registrada</option>
+                                </select>
+                            </label>
+                            <label>Base de salida
                                 <select name="origin_id" id="order-origin" required></select>
                             </label>
-                            <label>Destino
+                            <label>Zona o cliente destino
                                 <select name="destination_id" id="order-destination" required></select>
                             </label>
-                            <label>Peso (kg)
-                                <input name="weight_kg" type="number" step="0.01" min="1" required>
+                            <label>Producto
+                                <select name="product_id" id="order-product" required></select>
                             </label>
-                            <label>Cantidad de productos
-                                <input name="package_count" type="number" min="1" required>
+                            <label>Cantidad
+                                <input name="quantity" type="number" min="1" value="1" required>
+                            </label>
+                            <label>Carga estimada
+                                <input name="weight_kg" type="number" step="0.01" min="1" readonly>
+                            </label>
+                            <label>Total estimado
+                                <input name="total_amount" type="text" readonly>
                             </label>
                             <label>Prioridad
                                 <select name="priority">
@@ -254,19 +393,19 @@
                                     <option value="high">Alta</option>
                                 </select>
                             </label>
-                            <button type="submit">Guardar pedido</button>
+                            <button type="submit">Guardar entrega</button>
                         </form>
                     </article>
 
                     <article class="table-card">
-                        <h3>Pedidos</h3>
+                        <h3>Entregas y cobros</h3>
                         <div class="filter-bar inline-filter">
                             <label>Estado
                                 <select id="order-filter-status">
                                     <option value="">Todos</option>
                                     <option value="pending">Pendiente</option>
                                     <option value="assigned">Asignado</option>
-                                    <option value="in_transit">En tránsito</option>
+                                    <option value="in_transit">En ruta</option>
                                     <option value="delivered">Entregado</option>
                                     <option value="canceled">Cancelado</option>
                                 </select>
@@ -285,11 +424,12 @@
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Código</th>
-                                    <th>Origen</th>
-                                    <th>Destino</th>
-                                    <th>Peso</th>
-                                    <th>Bultos</th>
+                                    <th>Codigo</th>
+                                    <th>Base</th>
+                                    <th>Cliente/zona</th>
+                                    <th>Carga</th>
+                                    <th>Productos</th>
+                                    <th>Saldo</th>
                                     <th>Prioridad</th>
                                     <th>Estado</th>
                                 </tr>
@@ -300,40 +440,112 @@
                 </div>
             </section>
 
+            <!-- PAYMENTS -->
+            <section id="tab-payments" class="panel">
+                <div class="split">
+                    <article class="form-card">
+                        <h3>Registrar cobro o abono</h3>
+                        <form id="payment-form">
+                            <label>Tienda
+                                <select name="store_id" id="payment-store" required></select>
+                            </label>
+                            <label>Pedido
+                                <select name="order_id" id="payment-order">
+                                    <option value="">Sin pedido especifico</option>
+                                </select>
+                            </label>
+                            <label>Monto (Q)
+                                <input name="amount" type="number" step="0.01" min="0.01" required>
+                            </label>
+                            <label>Tipo
+                                <select name="payment_type">
+                                    <option value="full_payment">Pago completo</option>
+                                    <option value="partial_payment" selected>Abono</option>
+                                    <option value="credit">Credito</option>
+                                </select>
+                            </label>
+                            <label>Metodo
+                                <select name="method">
+                                    <option value="cash">Efectivo</option>
+                                    <option value="transfer">Transferencia</option>
+                                    <option value="other">Otro</option>
+                                </select>
+                            </label>
+                            <label>Nota
+                                <input name="note" placeholder="Recibo, referencia o comentario">
+                            </label>
+                            <button type="submit">Guardar cobro</button>
+                        </form>
+                    </article>
+                    <article class="table-card">
+                        <h3>Saldos por tienda</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Tienda</th>
+                                    <th>Municipio</th>
+                                    <th>Colonia/comunidad</th>
+                                    <th>Ventas</th>
+                                    <th>Pagado</th>
+                                    <th>Saldo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="balances-body"></tbody>
+                        </table>
+                    </article>
+                </div>
+                <article class="table-card">
+                    <h3>Historial de cobros</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tienda</th>
+                                <th>Pedido</th>
+                                <th>Monto</th>
+                                <th>Tipo</th>
+                                <th>Metodo</th>
+                                <th>Estado sync</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payments-body"></tbody>
+                    </table>
+                </article>
+            </section>
+
             <!-- PLANNER -->
             <section id="tab-planner" class="panel">
                 <article class="form-card wide">
-                    <h3>Planificar viaje óptimo (Dijkstra)</h3>
+                    <h3>Planificar ruta de reparto (Dijkstra)</h3>
                     <p class="hint">
-                        Selecciona pedidos pendientes con el mismo origen y destino para crear un viaje consolidado.
+                        Selecciona entregas pendientes para ordenar varias tiendas en un solo recorrido del repartidor.
                     </p>
                     <form id="planner-form">
-                        <label>Vehículo
+                        <label>Vehiculo
                             <select id="planner-vehicle" name="vehicle_id" required></select>
                         </label>
-                        <label>Conductor (opcional)
+                        <label>Repartidor (opcional)
                             <select id="planner-driver" name="driver_id">
-                                <option value="">Sin conductor asignado</option>
+                                <option value="">Sin repartidor asignado</option>
                             </select>
                         </label>
                         <div class="orders-picker">
-                            <h4>Pedidos pendientes</h4>
+                            <h4>Entregas pendientes</h4>
                             <div id="planner-orders-list" class="checklist"></div>
                         </div>
-                        <button type="submit">Planificar y crear viaje</button>
+                        <button type="submit">Planificar y crear ruta</button>
                     </form>
                 </article>
 
                 <article class="result-card" id="planner-result">
-                    <h3>Resultado de planificación</h3>
-                    <p>Aún no se ha generado ningún viaje en esta sesión.</p>
+                    <h3>Resultado de planificacion</h3>
+                    <p>Aun no se ha generado ninguna ruta en esta sesion.</p>
                 </article>
             </section>
 
             <!-- TRIPS -->
             <section id="tab-trips" class="panel">
                 <article class="table-card">
-                    <h3>Viajes</h3>
+                    <h3>Rutas de reparto</h3>
                     <div class="filter-bar inline-filter">
                         <label>Estado
                             <select id="trip-filter-status">
@@ -344,7 +556,7 @@
                                 <option value="canceled">Cancelado</option>
                             </select>
                         </label>
-                        <label>Vehículo
+                        <label>Vehiculo
                             <select id="trip-filter-vehicle">
                                 <option value="">Todos</option>
                             </select>
@@ -355,13 +567,13 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Código</th>
-                                <th>Vehículo</th>
-                                <th>Conductor</th>
+                                <th>Codigo</th>
+                                <th>Vehiculo</th>
+                                <th>Repartidor</th>
                                 <th>Ruta</th>
                                 <th>Distancia</th>
                                 <th>Combustible</th>
-                                <th>Costo</th>
+                                <th>Cobro/costo</th>
                                 <th>Estado</th>
                                 <th>Acciones</th>
                             </tr>
@@ -371,16 +583,36 @@
                 </article>
 
                 <article class="form-card wide">
-                    <h3>Registrar evento de monitoreo</h3>
+                    <h3>Registrar visita o cobro en ruta</h3>
                     <form id="event-form">
-                        <label>Viaje
+                        <label>Ruta
                             <select id="event-trip-id" name="trip_id" required></select>
                         </label>
                         <label>Evento
-                            <input name="note" required placeholder="Ejemplo: Unidad ingresó a Retalhuleu">
+                            <input name="note" required placeholder="Ejemplo: entrega pagada, abono parcial o cliente no atendido">
                         </label>
-                        <button type="submit">Guardar evento</button>
+                        <button type="submit">Guardar registro</button>
                     </form>
+                </article>
+            </section>
+
+            <!-- REPORTS -->
+            <section id="tab-reports" class="panel">
+                <article class="table-card">
+                    <h3>Resumen operativo y financiero</h3>
+                    <div class="filter-bar inline-filter">
+                        <label>Desde <input type="date" id="report-date-from"></label>
+                        <label>Hasta <input type="date" id="report-date-to"></label>
+                        <button class="btn-filter" id="report-filter-btn">Filtrar</button>
+                    </div>
+                    <div class="cards-grid compact-metrics">
+                        <article class="metric-card"><h3>Ventas (Q)</h3><p id="report-sales">0.00</p></article>
+                        <article class="metric-card"><h3>Pagado (Q)</h3><p id="report-paid">0.00</p></article>
+                        <article class="metric-card"><h3>Saldo (Q)</h3><p id="report-balance">0.00</p></article>
+                        <article class="metric-card"><h3>Pedidos</h3><p id="report-orders">0</p></article>
+                        <article class="metric-card"><h3>Rutas</h3><p id="report-trips">0</p></article>
+                        <article class="metric-card"><h3>Combustible (Q)</h3><p id="report-fuel">0.00</p></article>
+                    </div>
                 </article>
             </section>
 
@@ -388,8 +620,8 @@
             <section id="tab-map" class="panel">
                 <article class="map-card">
                     <div class="map-controls">
-                        <h3>Mapa de red logística</h3>
-                        <label>Resaltar ruta de viaje
+                        <h3>Mapa de rutas de reparto</h3>
+                        <label>Resaltar ruta del dia
                             <select id="map-trip-select">
                                 <option value="">Ninguno</option>
                             </select>
@@ -398,19 +630,19 @@
                     <div class="route-summary is-empty" id="map-route-summary">
                         <div class="route-summary-head">
                             <h4>Detalle de ruta</h4>
-                            <span id="map-summary-hint">Selecciona un viaje para ver la ruta óptima destacada.</span>
+                            <span id="map-summary-hint">Selecciona una ruta para ver el recorrido destacado.</span>
                         </div>
                         <div class="route-summary-grid">
                             <div class="route-summary-item">
-                                <span>Viaje</span>
+                                <span>Ruta</span>
                                 <strong id="map-summary-code">-</strong>
                             </div>
                             <div class="route-summary-item">
-                                <span>Origen</span>
+                                <span>Base</span>
                                 <strong id="map-summary-origin">-</strong>
                             </div>
                             <div class="route-summary-item">
-                                <span>Destino</span>
+                                <span>Cliente/zona</span>
                                 <strong id="map-summary-destination">-</strong>
                             </div>
                             <div class="route-summary-item">
@@ -418,7 +650,7 @@
                                 <strong id="map-summary-distance">-</strong>
                             </div>
                             <div class="route-summary-item">
-                                <span>Costo</span>
+                                <span>Cobro/costo</span>
                                 <strong id="map-summary-cost">-</strong>
                             </div>
                             <div class="route-summary-item">
@@ -432,6 +664,7 @@
                         </div>
                         <div class="route-legend">
                             <span class="legend-item"><i class="legend-dot legend-network"></i>Red completa</span>
+                            <span class="legend-item"><i class="legend-dot legend-store"></i>Tiendas</span>
                             <span class="legend-item"><i class="legend-dot legend-route"></i>Ruta seleccionada</span>
                             <span class="legend-item"><i class="legend-dot legend-start"></i>Inicio</span>
                             <span class="legend-item"><i class="legend-dot legend-middle"></i>Intermedio</span>
@@ -439,8 +672,9 @@
                         </div>
                     </div>
                     <div class="gps-sim-controls">
-                        <button type="button" id="btn-start-gps" class="btn-small">▶ Simular GPS</button>
-                        <button type="button" id="btn-stop-gps" class="btn-small btn-danger" style="display:none">■ Detener simulación</button>
+                        <button type="button" id="btn-start-gps" class="btn-small">Simular GPS</button>
+                        <button type="button" id="btn-sim-delivery" class="btn-small btn-neutral">Simular entrega</button>
+                        <button type="button" id="btn-stop-gps" class="btn-small btn-danger" style="display:none">Detener simulacion</button>
                         <span id="gps-sim-status" class="gps-sim-hint"></span>
                     </div>
                     <div id="route-map"></div>
@@ -451,14 +685,14 @@
             <section id="tab-departments" class="panel">
                 <div class="split">
                     <article class="form-card" id="department-form-card">
-                        <h3>Agregar departamento</h3>
+                        <h3>Agregar zona de reparto</h3>
                         <form id="department-form">
-                            <label>Autocompletar departamento de Guatemala
+                            <label>Autocompletar zona/departamento de Guatemala
                                 <select id="dept-preset-select">
-                                    <option value="">— Seleccione para autocompletar —</option>
+                                    <option value="">Seleccione para autocompletar</option>
                                 </select>
                             </label>
-                            <label>Código
+                            <label>Codigo
                                 <input name="code" required placeholder="GT01" maxlength="8">
                             </label>
                             <label>Nombre
@@ -470,16 +704,16 @@
                             <label>Longitud
                                 <input name="longitude" type="number" step="0.000001" placeholder="-90.506882">
                             </label>
-                            <button type="submit">Guardar departamento</button>
+                            <button type="submit">Guardar zona</button>
                         </form>
                     </article>
 
                     <article class="table-card">
-                        <h3>Departamentos registrados</h3>
+                        <h3>Zonas registradas</h3>
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Código</th>
+                                    <th>Codigo</th>
                                     <th>Nombre</th>
                                     <th>Latitud</th>
                                     <th>Longitud</th>

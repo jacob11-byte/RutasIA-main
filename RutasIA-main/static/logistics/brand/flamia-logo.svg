@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 220" role="img" aria-labelledby="title desc">
+  <title id="title">Flamia</title>
+  <desc id="desc">Logo de Flamia para rutas, entregas y cobros offline</desc>
+  <defs>
+    <linearGradient id="flame" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f97316"/>
+      <stop offset="0.48" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#0ea5a4"/>
+    </linearGradient>
+  </defs>
+  <rect width="820" height="220" rx="34" fill="#0f172a"/>
+  <g transform="translate(48 34)">
+    <path d="M70 4C35 46 20 75 20 105c0 42 34 76 76 76s76-34 76-76c0-27-16-58-48-93 4 31-9 45-23 57C90 42 83 24 70 4z" fill="url(#flame)"/>
+    <path d="M95 93c-18 17-28 31-28 48 0 16 13 30 30 30s30-14 30-30c0-17-11-31-32-48z" fill="#fff7ed" opacity=".92"/>
+  </g>
+  <g transform="translate(246 55)">
+    <text x="0" y="70" font-family="Trebuchet MS, Segoe UI, Arial, sans-serif" font-size="68" font-weight="800" fill="#f8fafc">Flamia</text>
+    <text x="4" y="112" font-family="Trebuchet MS, Segoe UI, Arial, sans-serif" font-size="25" font-weight="700" fill="#67e8f9">Rutas, entregas y cobros offline</text>
+  </g>
+</svg>

@@ -1,10 +1,10 @@
 services:
   # Servicio web principal (ya configurado)
   - type: web
-    name: rutasia
+    name: flamia
     runtime: python
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: gunicorn rutasia.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
+    startCommand: gunicorn flamia.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
     envVars:
       - key: DATABASE_URL
         sync: false
