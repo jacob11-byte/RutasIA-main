@@ -17,6 +17,8 @@ const API = {
     fuelPrice: "/api/fuel-price/"
 };
 
+const OFFLINE_QUEUE_KEY = "flamia.offlineQueue.v1";
+
 const GUATEMALA_DEPARTMENTS = [
     { code: "GT01", name: "Guatemala",        lat: 14.634915, lng: -90.506882 },
     { code: "GT02", name: "El Progreso",      lat: 14.866600, lng: -90.070300 },
@@ -72,13 +74,19 @@ let gpsSimTimer = null;
 let gpsSimMarker = null;
 let lastDirectionsResult = null;
 let deliverySimTimer = null;
+let isSyncingOfflineQueue = false;
 
 document.addEventListener("DOMContentLoaded", async () => {
+    initPwa();
+    bindOfflineSync();
     bindTabs();
     initDeptPresetSelect();
     bindForms();
     bindFilters();
     await reloadAll();
+    activateInitialTabFromUrl();
+    renderOfflineStatus();
+    if (navigator.onLine) syncPendingData();
 });
 
 function bindTabs() {
@@ -119,6 +127,7 @@ function bindForms() {
     document.getElementById("user-form").addEventListener("submit", onUserSubmit);
     document.getElementById("department-form").addEventListener("submit", onDepartmentSubmit);
     document.getElementById("map-trip-select").addEventListener("change", onMapTripSelect);
+    document.getElementById("map-route-summary").addEventListener("click", onRouteStopAction);
     document.getElementById("dept-preset-select").addEventListener("change", onDeptPresetChange);
     document.getElementById("btn-start-gps").addEventListener("click", startGpsSimulation);
     document.getElementById("btn-stop-gps").addEventListener("click", stopGpsSimulation);
@@ -135,6 +144,32 @@ function bindForms() {
         document.getElementById("btn-edit-fuel").style.display = "";
     });
     document.getElementById("report-filter-btn").addEventListener("click", reloadReport);
+    document.getElementById("btn-sync-now").addEventListener("click", syncPendingData);
+}
+
+function initPwa() {
+    if (!("serviceWorker" in navigator)) return;
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/service-worker.js").catch((error) => {
+            console.warn("No se pudo registrar el service worker:", error);
+        });
+    });
+}
+
+function bindOfflineSync() {
+    window.addEventListener("online", () => {
+        renderOfflineStatus();
+        syncPendingData();
+    });
+    window.addEventListener("offline", renderOfflineStatus);
+}
+
+function activateInitialTabFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (!tab) return;
+    const tabButton = Array.from(document.querySelectorAll(".tab")).find((item) => item.dataset.tab === tab);
+    tabButton?.click();
 }
 
 
@@ -1093,6 +1128,7 @@ function fitMapToDepartments() {
 function updateMapRouteSummary(trip) {
     const summary = document.getElementById("map-route-summary");
     const hint = document.getElementById("map-summary-hint");
+    const stopsBox = document.getElementById("map-route-stops");
     if (!summary || !hint) return;
     if (!trip) {
         summary.classList.add("is-empty");
@@ -1104,6 +1140,7 @@ function updateMapRouteSummary(trip) {
         setSummaryField("map-summary-cost", "-");
         setSummaryField("map-summary-fuel", "-");
         setSummaryField("map-summary-status", "-");
+        if (stopsBox) stopsBox.innerHTML = "";
         return;
     }
     summary.classList.remove("is-empty");
@@ -1118,6 +1155,55 @@ function updateMapRouteSummary(trip) {
     setSummaryField("map-summary-cost", `Q ${trip.estimated_cost.toFixed(2)}`);
     setSummaryField("map-summary-fuel", `${trip.estimated_fuel_gallons.toFixed(2)} gal`);
     setSummaryField("map-summary-status", statusChip(trip.status));
+    renderMapStops(trip);
+}
+
+function renderMapStops(trip) {
+    const stopsBox = document.getElementById("map-route-stops");
+    if (!stopsBox) return;
+    const stops = trip.stops || [];
+    if (!stops.length) {
+        stopsBox.innerHTML = "";
+        return;
+    }
+    stopsBox.innerHTML = `
+        <h5>Paradas del repartidor</h5>
+        <div class="route-stop-list">
+            ${stops.map((stop) => `
+                <article class="route-stop-item">
+                    <div>
+                        <strong>${stop.sequence}. ${escapeHtml(stop.store_name || stop.order_code || "Parada")}</strong>
+                        <span>${statusChip(stop.status)} ${stop.observation ? escapeHtml(stop.observation) : ""}</span>
+                    </div>
+                    <div class="route-stop-actions">
+                        <button type="button" class="btn-inline" data-stop-id="${stop.id}" data-stop-status="delivered">Entregado</button>
+                        <button type="button" class="btn-inline btn-danger" data-stop-id="${stop.id}" data-stop-status="not_delivered">No entregado</button>
+                    </div>
+                </article>
+            `).join("")}
+        </div>
+    `;
+}
+
+async function onRouteStopAction(event) {
+    const button = event.target.closest("button[data-stop-id][data-stop-status]");
+    if (!button || !selectedMapTripId) return;
+    const stopId = Number(button.dataset.stopId);
+    const status = button.dataset.stopStatus;
+    const observation = status === "not_delivered" ? "Marcado desde app movil" : "";
+    try {
+        const response = await postJsonOrQueue(
+            `/api/trips/${selectedMapTripId}/stops/${stopId}/`,
+            { status, observation },
+            status === "delivered" ? "Marcar parada entregada" : "Marcar parada no entregada"
+        );
+        showToast(response.queued ? "Parada guardada sin conexion." : "Parada actualizada.");
+        if (response.queued) return;
+        await reloadAll();
+        focusMapTripById(selectedMapTripId, { shouldFit: false });
+    } catch (error) {
+        showToast(error.message, true);
+    }
 }
 
 function calcBearing(p1, p2) {
@@ -1371,10 +1457,14 @@ async function onStoreSubmit(event) {
         is_active: form.is_active.checked
     };
     try {
-        const response = await postJson(API.stores, payload);
+        const response = await postJsonOrQueue(API.stores, payload, "Registrar tienda");
         form.reset();
         const status = document.getElementById("store-gps-status");
         if (status) status.textContent = "";
+        if (response.queued) {
+            showToast("Tienda guardada sin conexion. Se sincronizara despues.");
+            return;
+        }
         showToast("Tienda registrada con GPS.");
         await reloadAll();
         focusStoreById(response.store.id);
@@ -1484,10 +1574,14 @@ async function onOrderSubmit(event) {
         priority: form.priority.value
     };
     try {
-        await postJson(API.orders, payload);
+        const response = await postJsonOrQueue(API.orders, payload, "Crear entrega");
         form.reset();
         form.destination_id.disabled = false;
-        showToast("Entrega creada.");
+        showToast(response.queued ? "Entrega guardada sin conexion. Se sincronizara despues." : "Entrega creada.");
+        if (response.queued) {
+            updateOrderEstimate();
+            return;
+        }
         await reloadAll();
     } catch (error) {
         showToast(error.message, true);
@@ -1504,12 +1598,14 @@ async function onPaymentSubmit(event) {
         payment_type: form.payment_type.value,
         method: form.method.value,
         note: form.note.value.trim(),
+        sync_status: navigator.onLine ? "synced" : "pending",
         uuid: window.crypto && crypto.randomUUID ? crypto.randomUUID() : undefined
     };
     try {
-        await postJson(API.payments, payload);
+        const response = await postJsonOrQueue(API.payments, payload, "Registrar cobro");
         form.reset();
-        showToast("Cobro registrado.");
+        showToast(response.queued ? "Cobro guardado sin conexion. Se sincronizara despues." : "Cobro registrado.");
+        if (response.queued) return;
         await reloadAll();
     } catch (error) {
         showToast(error.message, true);
@@ -1573,8 +1669,9 @@ async function onTripsActionClick(event) {
     const tripId = Number(button.dataset.tripId);
     const action = button.dataset.action;
     try {
-        await postJson(`/api/trips/${tripId}/action/`, { action });
-        showToast(`Accion "${action}" ejecutada.`);
+        const response = await postJsonOrQueue(`/api/trips/${tripId}/action/`, { action }, `Ruta: ${statusLabel(action)}`);
+        showToast(response.queued ? `Accion "${action}" guardada sin conexion.` : `Accion "${action}" ejecutada.`);
+        if (response.queued) return;
         await reloadAll();
     } catch (error) {
         showToast(error.message, true);
@@ -1591,9 +1688,10 @@ async function onEventSubmit(event) {
         return;
     }
     try {
-        await postJson(`/api/trips/${tripId}/events/`, { note });
+        const response = await postJsonOrQueue(`/api/trips/${tripId}/events/`, { note }, "Registrar visita");
         form.reset();
-        showToast("Evento registrado.");
+        showToast(response.queued ? "Visita guardada sin conexion. Se sincronizara despues." : "Evento registrado.");
+        if (response.queued) return;
         await reloadAll();
     } catch (error) {
         showToast(error.message, true);
@@ -1737,6 +1835,105 @@ function drawBarChart(canvasId, labels, values, color) {
 
 // â”€â”€ HTTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+function getOfflineQueue() {
+    try {
+        return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]");
+    } catch (_) {
+        return [];
+    }
+}
+
+function saveOfflineQueue(queue) {
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    renderOfflineStatus();
+}
+
+function makeLocalId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function enqueueOfflineRequest(url, payload, label) {
+    const queue = getOfflineQueue();
+    queue.push({
+        id: makeLocalId(),
+        url,
+        payload,
+        label,
+        created_at: new Date().toISOString()
+    });
+    saveOfflineQueue(queue);
+}
+
+function isNetworkError(error) {
+    return !navigator.onLine || /failed to fetch|networkerror|load failed/i.test(String(error.message || error));
+}
+
+async function postJsonOrQueue(url, payload, label) {
+    try {
+        return await postJson(url, payload);
+    } catch (error) {
+        if (!isNetworkError(error)) throw error;
+        enqueueOfflineRequest(url, payload, label);
+        return { ok: true, queued: true };
+    }
+}
+
+async function syncPendingData() {
+    if (isSyncingOfflineQueue) return;
+    if (!navigator.onLine) {
+        renderOfflineStatus();
+        showToast("Sin conexion. Los pendientes siguen guardados.", true);
+        return;
+    }
+
+    let queue = getOfflineQueue();
+    if (!queue.length) {
+        renderOfflineStatus();
+        return;
+    }
+
+    isSyncingOfflineQueue = true;
+    renderOfflineStatus("Sincronizando...");
+    try {
+        while (queue.length) {
+            const item = queue[0];
+            await postJson(item.url, item.payload);
+            queue = queue.slice(1);
+            saveOfflineQueue(queue);
+        }
+        showToast("Pendientes sincronizados.");
+        await reloadAll();
+    } catch (error) {
+        showToast(isNetworkError(error) ? "Se perdio la conexion. Se reintentara despues." : error.message, true);
+    } finally {
+        isSyncingOfflineQueue = false;
+        renderOfflineStatus();
+    }
+}
+
+function renderOfflineStatus(detailOverride = "") {
+    const banner = document.getElementById("offline-banner");
+    const label = document.getElementById("offline-state-label");
+    const detail = document.getElementById("offline-state-detail");
+    const syncButton = document.getElementById("btn-sync-now");
+    if (!banner || !label || !detail) return;
+    const pending = getOfflineQueue().length;
+    const online = navigator.onLine;
+
+    banner.classList.toggle("is-offline", !online);
+    banner.classList.toggle("has-pending", pending > 0);
+    label.textContent = online ? "En linea" : "Sin conexion";
+    if (detailOverride) {
+        detail.textContent = detailOverride;
+    } else if (pending) {
+        detail.textContent = `${pending} pendiente(s) por sincronizar.`;
+    } else {
+        detail.textContent = online ? "Sincronizacion al dia." : "Los cambios se guardaran en este telefono.";
+    }
+    if (syncButton) syncButton.disabled = !online || !pending || isSyncingOfflineQueue;
+}
+
 async function getJson(url) {
     const response = await fetch(url, { credentials: "same-origin" });
     const data = await response.json();
@@ -1768,8 +1965,9 @@ async function postJson(url, payload) {
 function statusLabel(status) {
     const labels = {
         pending: "Pendiente", assigned: "Asignado", in_transit: "En ruta",
-        delivered: "Entregado", canceled: "Cancelado",
-        planned: "Planificado", in_progress: "En progreso", completed: "Completado"
+        delivered: "Entregado", not_delivered: "No entregado", canceled: "Cancelado",
+        planned: "Planificado", in_progress: "En progreso", completed: "Completado",
+        start: "Iniciar", complete: "Completar", cancel: "Cancelar"
     };
     return labels[status] || status;
 }

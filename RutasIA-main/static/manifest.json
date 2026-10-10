@@ -1,0 +1,40 @@
+{
+  "name": "Flamia - Rutas, entregas y cobros",
+  "short_name": "Flamia",
+  "description": "Sistema movil offline-first para rutas, entregas, tiendas y cobros.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0ea5a4",
+  "categories": ["business", "productivity", "navigation"],
+  "icons": [
+    {
+      "src": "/static/logistics/brand/flamia-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Registrar tienda",
+      "short_name": "Tienda",
+      "url": "/?tab=stores",
+      "description": "Guardar cliente o tienda con GPS."
+    },
+    {
+      "name": "Cobros",
+      "short_name": "Cobros",
+      "url": "/?tab=payments",
+      "description": "Registrar pagos y abonos."
+    },
+    {
+      "name": "Mapa",
+      "short_name": "Mapa",
+      "url": "/?tab=map",
+      "description": "Ver rutas de reparto."
+    }
+  ]
+}

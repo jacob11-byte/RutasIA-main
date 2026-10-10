@@ -5,10 +5,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Flamia | Rutas y cobros offline</title>
+    <meta name="theme-color" content="#0ea5a4">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Flamia">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="{% static 'logistics/brand/flamia-icon.svg' %}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{% static 'logistics/brand/flamia-icon.svg' %}">
     <link rel="stylesheet" href="{% static 'logistics/style.css' %}">
 </head>
 <body>
     <div class="backdrop"></div>
+    <div class="offline-banner" id="offline-banner">
+        <strong id="offline-state-label">En linea</strong>
+        <span id="offline-state-detail">Sincronizacion al dia.</span>
+        <button type="button" id="btn-sync-now" class="btn-small btn-neutral">Sincronizar</button>
+    </div>
     <div class="layout">
         <header class="hero">
             <div class="hero-top">
@@ -662,6 +674,7 @@
                                 <strong id="map-summary-status">-</strong>
                             </div>
                         </div>
+                        <div class="route-stops" id="map-route-stops"></div>
                         <div class="route-legend">
                             <span class="legend-item"><i class="legend-dot legend-network"></i>Red completa</span>
                             <span class="legend-item"><i class="legend-dot legend-store"></i>Tiendas</span>
