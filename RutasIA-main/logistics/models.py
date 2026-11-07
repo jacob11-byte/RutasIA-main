@@ -156,6 +156,8 @@ class Store(TimestampedModel):
     department = models.ForeignKey(Department, on_delete=models.PROTECT, related_name="stores")
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    location_accuracy_m = models.FloatField(null=True, blank=True)
+    location_captured_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -337,6 +339,10 @@ class RouteStop(TimestampedModel):
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
+    delivery_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    delivery_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    delivery_accuracy_m = models.FloatField(null=True, blank=True)
+    delivery_captured_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["trip", "sequence"]
@@ -390,3 +396,14 @@ class TripEvent(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.trip.code}: {self.note[:50]}"
+
+
+class MutationReceipt(TimestampedModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    key = models.UUIDField()
+    fingerprint = models.CharField(max_length=64)
+    response = models.JSONField()
+    status_code = models.PositiveSmallIntegerField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "key"], name="unique_user_mutation")]

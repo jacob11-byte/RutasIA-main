@@ -17,7 +17,10 @@ const API = {
     fuelPrice: "/api/fuel-price/"
 };
 
-const OFFLINE_QUEUE_KEY = "flamia.offlineQueue.v1";
+const OFFLINE_QUEUE_KEY = "flamia.offlineQueue.v1"; // Legacy queue is preserved for manual recovery.
+let offlinePendingCount = 0;
+let offlineLastError = "";
+let offlineRetryTimer;
 
 const GUATEMALA_DEPARTMENTS = [
     { code: "GT01", name: "Guatemala",        lat: 14.634915, lng: -90.506882 },
@@ -78,11 +81,13 @@ let isSyncingOfflineQueue = false;
 
 document.addEventListener("DOMContentLoaded", async () => {
     initPwa();
+    initDeliveryLocation();
     bindOfflineSync();
     bindTabs();
     initDeptPresetSelect();
     bindForms();
     bindFilters();
+    await refreshOfflineSummary();
     await reloadAll();
     activateInitialTabFromUrl();
     renderOfflineStatus();
@@ -108,20 +113,36 @@ function bindTabs() {
     });
 }
 
+function bindSafeSubmit(id, handler) {
+    const form = document.getElementById(id);
+    form.addEventListener("submit", async event => {
+        event.preventDefault();
+        if (form.dataset.saving) return;
+        form.dataset.saving = "true";
+        const buttons = form.querySelectorAll('[type="submit"]');
+        buttons.forEach(button => button.disabled = true);
+        try { await handler(event); }
+        finally {
+            delete form.dataset.saving;
+            buttons.forEach(button => button.disabled = false);
+        }
+    });
+}
+
 function bindForms() {
     document.getElementById("vehicle-form").addEventListener("submit", onVehicleSubmit);
-    document.getElementById("store-form").addEventListener("submit", onStoreSubmit);
+    bindSafeSubmit("store-form", onStoreSubmit);
     document.getElementById("btn-store-gps").addEventListener("click", fillStoreGpsFromDevice);
     document.getElementById("order-store").addEventListener("change", onOrderStoreChange);
     document.getElementById("order-product").addEventListener("change", updateOrderEstimate);
     document.querySelector("#order-form input[name='quantity']").addEventListener("input", updateOrderEstimate);
     document.getElementById("driver-form").addEventListener("submit", onDriverSubmit);
     document.getElementById("product-form").addEventListener("submit", onProductSubmit);
-    document.getElementById("order-form").addEventListener("submit", onOrderSubmit);
+    bindSafeSubmit("order-form", onOrderSubmit);
     document.getElementById("payment-store").addEventListener("change", renderPaymentOrderSelect);
-    document.getElementById("payment-form").addEventListener("submit", onPaymentSubmit);
+    bindSafeSubmit("payment-form", onPaymentSubmit);
     document.getElementById("planner-form").addEventListener("submit", onPlannerSubmit);
-    document.getElementById("event-form").addEventListener("submit", onEventSubmit);
+    bindSafeSubmit("event-form", onEventSubmit);
     document.getElementById("trips-body").addEventListener("click", onTripsActionClick);
     document.getElementById("stores-body").addEventListener("click", onStoresActionClick);
     document.getElementById("user-form").addEventListener("submit", onUserSubmit);
@@ -149,8 +170,21 @@ function bindForms() {
 
 function initPwa() {
     if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.addEventListener("message", event => {
+        if (event.data?.type === "FLAMIA_SESSION_ENDED") window.location.replace("/accounts/login/");
+    });
     window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/service-worker.js").catch((error) => {
+        navigator.serviceWorker.register("/service-worker.js").then(async () => {
+            await navigator.serviceWorker.ready;
+            // The first navigation happened before the worker controlled this page.
+            const shell = await fetch("/", { credentials: "same-origin", cache: "no-store" });
+            if (shell.ok && shell.headers.get("X-Flamia-User-ID") === FlamiaOffline.owner) {
+                const cache = await caches.open("flamia-shell-v3");
+                await cache.put("/", shell);
+            }
+        }).catch((error) => {
+            offlineLastError = "No se pudo preparar la apertura offline. Abre Flamia con conexion y vuelve a intentarlo.";
+            renderOfflineStatus();
             console.warn("No se pudo registrar el service worker:", error);
         });
     });
@@ -161,7 +195,14 @@ function bindOfflineSync() {
         renderOfflineStatus();
         syncPendingData();
     });
-    window.addEventListener("offline", renderOfflineStatus);
+    window.addEventListener("offline", () => renderOfflineStatus());
+    window.addEventListener("focus", () => { if (navigator.onLine) syncPendingData(); });
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && navigator.onLine) syncPendingData();
+    });
+    offlineRetryTimer = window.setInterval(() => {
+        if (navigator.onLine && offlinePendingCount) syncPendingData();
+    }, 30000);
 }
 
 function activateInitialTabFromUrl() {
@@ -295,6 +336,7 @@ async function reloadAll() {
         }
 
         renderAll();
+        await refreshOfflineSummary();
     } catch (error) {
         showToast(error.message, true);
     }
@@ -339,8 +381,9 @@ function renderAll() {
     renderPlannerInputs();
     renderTripsFiltered();
     renderEventTripSelect();
+    renderDeliveryTripSelect();
     renderTripFilterVehicles();
-    renderMap();
+    if (window.google?.maps) renderMap();
     renderUsers();
 }
 
@@ -1388,9 +1431,11 @@ function reverseGeocodeStorePosition(lat, lng) {
     const geocoder = new google.maps.Geocoder();
     const form = document.getElementById("store-form");
     const status = document.getElementById("store-gps-status");
+    const capture = storeLocationCapture;
     geocoder.geocode({ location: { lat, lng } }, (results, geoStatus) => {
+        if (storeLocationCapture !== capture) return;
         if (geoStatus !== "OK" || !results?.length) {
-            if (status) status.textContent = "GPS capturado; no se encontro direccion automatica.";
+            if (status) status.textContent = `${storeLocationMessage} Completa la direccion manualmente.`;
             return;
         }
         const best = results[0];
@@ -1407,43 +1452,16 @@ function reverseGeocodeStorePosition(lat, lng) {
                 addressPart(best, "sublocality") ||
                 addressPart(best, "sublocality_level_1");
         }
-        if (status) status.textContent = "GPS y direccion detectados. Revisa los datos antes de guardar.";
+        if (status) status.textContent = `${storeLocationMessage} Direccion detectada; revisala antes de guardar.`;
     });
-}
-
-function fillStoreGpsFromDevice() {
-    if (!navigator.geolocation) {
-        showToast("Este navegador no permite obtener GPS.", true);
-        return;
-    }
-    showToast("Solicitando ubicacion GPS...");
-    const status = document.getElementById("store-gps-status");
-    if (status) status.textContent = "Buscando tu ubicacion real...";
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            const form = document.getElementById("store-form");
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
-            form.latitude.value = lat.toFixed(6);
-            form.longitude.value = lng.toFixed(6);
-            const accuracy = Math.round(position.coords.accuracy || 0);
-            if (status) status.textContent = `GPS capturado con precision aproximada de ${accuracy} m.`;
-            reverseGeocodeStorePosition(lat, lng);
-            showToast("GPS real capturado para la tienda.");
-        },
-        () => {
-            if (status) status.textContent = "No se pudo obtener GPS. Revisa permisos del navegador.";
-            showToast("No se pudo obtener la ubicacion. Revisa permisos del navegador.", true);
-        },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-    );
 }
 
 async function onStoreSubmit(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (storeLocationCapture?.accuracy_m > 100 && !confirm("La precision supera los 100 metros. ?Verificaste que las coordenadas corresponden a la tienda y deseas guardarlas?")) return;
     const payload = {
-        name: form.name.value.trim(),
+        name: form.elements.namedItem("name").value.trim(),
         contact_name: form.contact_name.value.trim(),
         phone: form.phone.value.trim(),
         municipality: form.municipality.value.trim(),
@@ -1454,6 +1472,8 @@ async function onStoreSubmit(event) {
         reference: form.reference.value.trim(),
         latitude: Number(form.latitude.value),
         longitude: Number(form.longitude.value),
+        accuracy_m: storeLocationCapture?.accuracy_m ?? null,
+        captured_at: storeLocationCapture?.captured_at ?? null,
         is_active: form.is_active.checked
     };
     try {
@@ -1461,13 +1481,14 @@ async function onStoreSubmit(event) {
         form.reset();
         const status = document.getElementById("store-gps-status");
         if (status) status.textContent = "";
+        storeLocationCapture = null;
         if (response.queued) {
             showToast("Tienda guardada sin conexion. Se sincronizara despues.");
             return;
         }
         showToast("Tienda registrada con GPS.");
         await reloadAll();
-        focusStoreById(response.store.id);
+        if (window.google?.maps) focusStoreById(response.store.id);
     } catch (error) {
         showToast(error.message, true);
     }
@@ -1599,7 +1620,7 @@ async function onPaymentSubmit(event) {
         method: form.method.value,
         note: form.note.value.trim(),
         sync_status: navigator.onLine ? "synced" : "pending",
-        uuid: window.crypto && crypto.randomUUID ? crypto.randomUUID() : undefined
+        uuid: makeLocalId()
     };
     try {
         const response = await postJsonOrQueue(API.payments, payload, "Registrar cobro");
@@ -1635,6 +1656,10 @@ async function onPlannerSubmit(event) {
     ).map((node) => Number(node.value));
     if (!selectedOrders.length) {
         showToast("Selecciona al menos una entrega.", true);
+        return;
+    }
+    if (selectedOrders.some(id => id < 0) || !navigator.onLine) {
+        showToast("Conectate y sincroniza los pedidos antes de planificar la ruta. Las entregas y los cobros de rutas descargadas se pueden registrar sin conexion.", true);
         return;
     }
     const vehicleId = Number(form.vehicle_id.value);
@@ -1835,81 +1860,75 @@ function drawBarChart(canvasId, labels, values, color) {
 
 // â”€â”€ HTTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function getOfflineQueue() {
+async function refreshOfflineSummary() {
     try {
-        return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]");
-    } catch (_) {
-        return [];
-    }
-}
-
-function saveOfflineQueue(queue) {
-    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+        const account = await FlamiaOffline.read();
+        offlinePendingCount = account.queue.length;
+        offlineLastError = account.queue.find(item => item.error)?.error || (account.queue.length ? offlineLastError : "");
+        const list = document.getElementById("offline-pending-list");
+        if (list) list.innerHTML = account.queue.map(item => `<li>${escapeHtml(item.label)} ? ${escapeHtml(new Date(item.created_at).toLocaleString("es-GT"))}${item.error ? `: ${escapeHtml(item.error)}` : ""}
+            <button type="button" data-remove-pending="${escapeHtml(item.id)}">Descartar</button></li>`).join("");
+        const legacy = localStorage.getItem(OFFLINE_QUEUE_KEY);
+        if (legacy && JSON.parse(legacy).length) offlineLastError = "Hay pendientes de la version anterior. Descargalos antes de cambiar de dispositivo.";
+    } catch (error) { offlineLastError = error.message; }
     renderOfflineStatus();
 }
 
-function makeLocalId() {
-    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+function makeLocalId() { return FlamiaOffline.uuid(); }
 
-function enqueueOfflineRequest(url, payload, label) {
-    const queue = getOfflineQueue();
-    queue.push({
-        id: makeLocalId(),
-        url,
-        payload,
-        label,
-        created_at: new Date().toISOString()
-    });
-    saveOfflineQueue(queue);
-}
-
-function isNetworkError(error) {
-    return !navigator.onLine || /failed to fetch|networkerror|load failed/i.test(String(error.message || error));
-}
+function isNetworkError(error) { return error.network === true || error instanceof TypeError || error.name === "AbortError"; }
 
 async function postJsonOrQueue(url, payload, label) {
-    try {
-        return await postJson(url, payload);
-    } catch (error) {
-        if (!isNetworkError(error)) throw error;
-        enqueueOfflineRequest(url, payload, label);
-        return { ok: true, queued: true };
-    }
+    // Save first: a reload or a lost response must not lose the operation's key.
+    const item = await FlamiaOffline.enqueue(url, payload, label);
+    if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+    await refreshOfflineSummary();
+    let responses = {};
+    if (navigator.onLine) responses = await flushOfflineQueue();
+    await reloadAll();
+    return responses[item.id] || { ok: true, queued: true, local_id: item.local_id };
+}
+
+async function flushOfflineQueue() {
+    const responses = {};
+    await FlamiaOffline.lock(async () => {
+        isSyncingOfflineQueue = true;
+        offlineLastError = "";
+        renderOfflineStatus("Sincronizando...");
+        try {
+            // Do not replay another user's records after a session switch.
+            const me = await requestJson(API.me);
+            if (String(me.user.id) !== FlamiaOffline.owner) throw new Error("La sesion cambio. Recarga e inicia sesion con la cuenta de estos pendientes.");
+            while (true) {
+                const account = await FlamiaOffline.read();
+                const item = account.queue[0];
+                if (!item) break;
+                try {
+                    const payload = FlamiaOffline.resolvePayload(item.payload, account.mappings);
+                    const response = await postJson(item.url, payload, item.id);
+                    await FlamiaOffline.acknowledge(item, response);
+                    responses[item.id] = response;
+                } catch (error) {
+                    await FlamiaOffline.setError(item.id, error.message);
+                    throw error;
+                }
+            }
+        } catch (error) {
+            offlineLastError = error.message;
+        } finally {
+            isSyncingOfflineQueue = false;
+            await refreshOfflineSummary();
+        }
+    });
+    return responses;
 }
 
 async function syncPendingData() {
-    if (isSyncingOfflineQueue) return;
-    if (!navigator.onLine) {
-        renderOfflineStatus();
-        showToast("Sin conexion. Los pendientes siguen guardados.", true);
-        return;
-    }
-
-    let queue = getOfflineQueue();
-    if (!queue.length) {
-        renderOfflineStatus();
-        return;
-    }
-
-    isSyncingOfflineQueue = true;
-    renderOfflineStatus("Sincronizando...");
-    try {
-        while (queue.length) {
-            const item = queue[0];
-            await postJson(item.url, item.payload);
-            queue = queue.slice(1);
-            saveOfflineQueue(queue);
-        }
-        showToast("Pendientes sincronizados.");
-        await reloadAll();
-    } catch (error) {
-        showToast(isNetworkError(error) ? "Se perdio la conexion. Se reintentara despues." : error.message, true);
-    } finally {
-        isSyncingOfflineQueue = false;
-        renderOfflineStatus();
-    }
+    if (isSyncingOfflineQueue || !navigator.onLine) return;
+    await refreshOfflineSummary();
+    if (!offlinePendingCount) return;
+    await flushOfflineQueue();
+    await reloadAll();
 }
 
 function renderOfflineStatus(detailOverride = "") {
@@ -1917,50 +1936,63 @@ function renderOfflineStatus(detailOverride = "") {
     const label = document.getElementById("offline-state-label");
     const detail = document.getElementById("offline-state-detail");
     const syncButton = document.getElementById("btn-sync-now");
-    if (!banner || !label || !detail) return;
-    const pending = getOfflineQueue().length;
     const online = navigator.onLine;
+    banner?.classList.toggle("is-offline", !online || !!offlinePendingCount);
+    if (label) label.textContent = isSyncingOfflineQueue ? "Sincronizando" : !online ? "Sin conexion" : offlinePendingCount ? "Pendientes de envio" : "En linea";
+    if (detail) detail.textContent = detailOverride || offlineLastError || (offlinePendingCount ? `${offlinePendingCount} operacion(es) guardadas en este dispositivo.` : "Sin pendientes de envio. Los datos offline son la ultima copia descargada.");
+    if (syncButton) syncButton.disabled = !online || !offlinePendingCount || isSyncingOfflineQueue;
+}
 
-    banner.classList.toggle("is-offline", !online);
-    banner.classList.toggle("has-pending", pending > 0);
-    label.textContent = online ? "En linea" : "Sin conexion";
-    if (detailOverride) {
-        detail.textContent = detailOverride;
-    } else if (pending) {
-        detail.textContent = `${pending} pendiente(s) por sincronizar.`;
-    } else {
-        detail.textContent = online ? "Sincronizacion al dia." : "Los cambios se guardaran en este telefono.";
-    }
-    if (syncButton) syncButton.disabled = !online || !pending || isSyncingOfflineQueue;
+async function requestJson(url, payload, operationId) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    try {
+        const response = await fetch(url, {
+            method: payload === undefined ? "GET" : "POST",
+            credentials: "same-origin", cache: "no-store", signal: controller.signal,
+            headers: payload === undefined ? { "X-Flamia-User-ID": FlamiaOffline.owner } : {
+                "Content-Type": "application/json", "X-CSRFToken": getCookie("csrftoken"),
+                "X-Flamia-User-ID": FlamiaOffline.owner,
+                ...(operationId ? { "Idempotency-Key": operationId } : {})
+            },
+            ...(payload === undefined ? {} : { body: JSON.stringify(payload) })
+        });
+        if (response.redirected || response.status === 401) throw new Error("Tu sesion vencio. Inicia sesion con la misma cuenta para sincronizar; tus pendientes siguen guardados.");
+        if (response.status === 403) throw new Error("No tienes permiso o la sesion necesita renovarse. Inicia sesion nuevamente; los pendientes siguen guardados.");
+        if (response.status >= 500) {
+            const error = new Error("El servidor no esta disponible. Los pendientes se reintentaran automaticamente.");
+            error.network = true; throw error;
+        }
+        let data;
+        try { data = await response.json(); }
+        catch (_) { throw new Error("El servidor no devolvio una respuesta valida. Los pendientes siguen guardados."); }
+        if (!response.ok || !data.ok) throw new Error(data.error || `Error en ${url}`);
+        return data;
+    } catch (error) {
+        if (error.name === "AbortError" || error instanceof TypeError) {
+            const networkError = new Error("No se pudo conectar con el servidor. La operacion permanece guardada para reintentar.");
+            networkError.network = true;
+            throw networkError;
+        }
+        throw error;
+    } finally { clearTimeout(timeout); }
 }
 
 async function getJson(url) {
-    const response = await fetch(url, { credentials: "same-origin" });
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
-        throw new Error(data.error || `Error en ${url}`);
+    let data;
+    try { data = await requestJson(url); }
+    catch (error) {
+        if (!isNetworkError(error)) throw error;
+        return FlamiaOffline.projected(url);
     }
-    return data;
+    try { await FlamiaOffline.saveSnapshot(url, data); }
+    catch (error) { offlineLastError = error.message; renderOfflineStatus(); return data; }
+    return FlamiaOffline.projected(url, data);
 }
 
-async function postJson(url, payload) {
-    const response = await fetch(url, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": getCookie("csrftoken")
-        },
-        body: JSON.stringify(payload)
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
-        throw new Error(data.error || `Error en ${url}`);
-    }
-    return data;
+async function postJson(url, payload, operationId) {
+    return requestJson(url, payload, operationId);
 }
-
-// â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function statusLabel(status) {
     const labels = {

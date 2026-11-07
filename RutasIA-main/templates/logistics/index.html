@@ -14,13 +14,19 @@
     <link rel="apple-touch-icon" href="{% static 'logistics/brand/flamia-icon.svg' %}">
     <link rel="stylesheet" href="{% static 'logistics/style.css' %}">
 </head>
-<body>
+<body data-user-id="{{ request.user.pk }}">
     <div class="backdrop"></div>
     <div class="offline-banner" id="offline-banner">
         <strong id="offline-state-label">En linea</strong>
         <span id="offline-state-detail">Sincronizacion al dia.</span>
         <button type="button" id="btn-sync-now" class="btn-small btn-neutral">Sincronizar</button>
     </div>
+    <details class="table-card" id="offline-pending-panel">
+        <summary>Operaciones pendientes en este dispositivo</summary>
+        <p>Las operaciones se envian en orden al recuperar conexion. Si hay un error, revisa el primer pendiente. No borres los datos del navegador mientras haya pendientes.</p>
+        <ul id="offline-pending-list"></ul>
+        <button type="button" id="btn-export-legacy" class="btn-small btn-neutral">Descargar pendientes de la version anterior</button>
+    </details>
     <div class="layout">
         <header class="hero">
             <div class="hero-top">
@@ -244,14 +250,15 @@
                             </label>
                             <div class="split-compact">
                                 <label>Latitud
-                                    <input name="latitude" type="number" step="0.000001" required placeholder="14.634915">
+                                    <input name="latitude" type="number" min="-90" max="90" step="0.000001" required placeholder="14.634915">
                                 </label>
                                 <label>Longitud
-                                    <input name="longitude" type="number" step="0.000001" required placeholder="-90.506882">
+                                    <input name="longitude" type="number" min="-180" max="180" step="0.000001" required placeholder="-90.506882">
                                 </label>
                             </div>
-                            <button type="button" class="btn-small btn-neutral" id="btn-store-gps">Usar GPS actual</button>
-                            <small class="gps-sim-hint" id="store-gps-status"></small>
+                            <button type="button" class="btn-small btn-neutral" id="btn-store-gps">Tomar ubicacion actual de la tienda</button>
+                            <small>Estando en la tienda, pulsa el boton y permite el acceso a tu ubicacion. La precision depende del dispositivo; revisala antes de guardar.</small>
+                            <small class="gps-sim-hint" id="store-gps-status" role="status" aria-live="polite"></small>
                             <label class="inline">
                                 <input type="checkbox" name="is_active" checked>
                                 Tienda activa
@@ -595,6 +602,18 @@
                 </article>
 
                 <article class="form-card wide">
+                    <h3>Registrar entrega con ubicacion del repartidor</h3>
+                    <form id="delivery-location-form">
+                        <label>Ruta <select id="delivery-trip" name="trip_id" required></select></label>
+                        <label>Entrega <select id="delivery-stop" name="stop_id" required></select></label>
+                        <label>Resultado <select name="status"><option value="delivered">Entregado</option><option value="not_delivered">No entregado</option></select></label>
+                        <label>Observacion <input name="observation" maxlength="240" placeholder="Referencia de la entrega"></label>
+                        <button type="button" id="btn-delivery-gps" class="btn-small btn-neutral">Tomar mi ubicacion actual</button>
+                        <small id="delivery-gps-status" role="status" aria-live="polite">Captura tu ubicacion estando en el lugar de entrega. Se guarda por separado de la ubicacion de la tienda.</small>
+                        <button type="submit">Guardar entrega y ubicacion</button>
+                    </form>
+                </article>
+                <article class="form-card wide">
                     <h3>Registrar visita o cobro en ruta</h3>
                     <form id="event-form">
                         <label>Ruta
@@ -610,6 +629,7 @@
 
             <!-- REPORTS -->
             <section id="tab-reports" class="panel">
+                <p>Los reportes muestran los registros sincronizados. Sincroniza los pendientes para incluir las operaciones guardadas sin conexion.</p>
                 <article class="table-card">
                     <h3>Resumen operativo y financiero</h3>
                     <div class="filter-bar inline-filter">
@@ -796,6 +816,8 @@
         window.ORS_API_KEY = "{{ ors_api_key|escapejs }}";
     </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBcoQAzpOO8-BDwaSvM0owPca0_NCdoK3k&libraries=places"></script>
+    <script src="{% static 'logistics/offline.js' %}" defer></script>
+    <script src="{% static 'logistics/location.js' %}" defer></script>
     <script src="{% static 'logistics/app.js' %}" defer></script>
 </body>
 </html>

@@ -28,6 +28,8 @@ from logistics.models import (
     UserProfile,
     Vehicle,
 )
+from logistics.presentation.idempotency import idempotent
+from logistics.presentation.location import parse_location
 from logistics.domain.exceptions import PlanningError
 from logistics.application.services import TripLifecycleService, TripPlanner
 from logistics.presentation.serializers import (
@@ -55,14 +57,18 @@ from logistics.presentation.serializers import (
 @login_required
 @require_GET
 def index(request: HttpRequest):
-    return render(request, "logistics/index.html", {
+    response = render(request, "logistics/index.html", {
         "ors_api_key": getattr(django_settings, "ORS_API_KEY", ""),
         "google_maps_api_key": getattr(django_settings, "GOOGLE_MAPS_API_KEY", ""),
     })
+    response["X-Flamia-User-ID"] = str(request.user.pk)
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @login_required
 @require_GET
+@ensure_csrf_cookie
 def api_me(request: HttpRequest):
     user = request.user
     return _ok({
@@ -206,6 +212,7 @@ def api_connections(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@idempotent
 def api_stores(request: HttpRequest):
     if request.method == "GET":
         stores = Store.objects.select_related("department").all()
@@ -222,6 +229,7 @@ def api_stores(request: HttpRequest):
         if product_type not in [choice[0] for choice in Store.ProductType.choices]:
             return _error("Tipo de producto invalido.")
 
+        latitude, longitude, accuracy, captured = parse_location(payload, required=True)
         store = Store.objects.create(
             name=str(payload["name"]).strip(),
             contact_name=str(payload.get("contact_name", "")).strip(),
@@ -232,8 +240,10 @@ def api_stores(request: HttpRequest):
             reference=str(payload.get("reference", "")).strip(),
             product_type=product_type,
             department=department,
-            latitude=Decimal(str(payload["latitude"])),
-            longitude=Decimal(str(payload["longitude"])),
+            latitude=latitude,
+            longitude=longitude,
+            location_accuracy_m=accuracy,
+            location_captured_at=captured,
             is_active=bool(payload.get("is_active", True)),
         )
         return _ok({"store": _serialize_store(store)}, status=201)
@@ -351,6 +361,7 @@ def api_vehicles(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@idempotent
 def api_orders(request: HttpRequest):
     if request.method == "GET":
         orders = (
@@ -499,6 +510,7 @@ def api_plan_trip(request: HttpRequest):
 
 @login_required
 @require_http_methods(["POST"])
+@idempotent
 def api_trip_action(request: HttpRequest, trip_id: int):
     trip = get_object_or_404(
         Trip.objects.select_related("vehicle", "driver", "origin", "destination").prefetch_related(
@@ -535,6 +547,7 @@ def api_trip_action(request: HttpRequest, trip_id: int):
 
 @login_required
 @require_http_methods(["POST"])
+@idempotent
 def api_trip_event(request: HttpRequest, trip_id: int):
     trip = get_object_or_404(Trip, pk=trip_id)
     try:
@@ -548,6 +561,7 @@ def api_trip_event(request: HttpRequest, trip_id: int):
 
 @login_required
 @require_http_methods(["POST"])
+@idempotent
 def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
     stop = get_object_or_404(RouteStop.objects.select_related("trip", "order", "store"), pk=stop_id, trip_id=trip_id)
     try:
@@ -555,10 +569,16 @@ def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
         status = payload.get("status", RouteStop.Status.DELIVERED)
         if status not in [choice[0] for choice in RouteStop.Status.choices]:
             return _error("Estado de parada invalido.")
+        if stop.trip.status not in {Trip.Status.PLANNED, Trip.Status.IN_PROGRESS}:
+            return _error("Esta ruta ya esta cerrada; no se pueden modificar sus entregas.")
+        location = parse_location(payload, prefix="delivery_")
+        if location:
+            stop.delivery_latitude, stop.delivery_longitude, stop.delivery_accuracy_m, stop.delivery_captured_at = location
         stop.status = status
         stop.observation = str(payload.get("observation", stop.observation)).strip()
         stop.delivered_at = timezone.now() if status == RouteStop.Status.DELIVERED else None
-        stop.save(update_fields=["status", "observation", "delivered_at", "updated_at"])
+        stop.save(update_fields=["status", "observation", "delivered_at", "updated_at",
+                                 "delivery_latitude", "delivery_longitude", "delivery_accuracy_m", "delivery_captured_at"])
         if stop.order:
             if status == RouteStop.Status.DELIVERED:
                 stop.order.status = Order.Status.DELIVERED
@@ -574,6 +594,7 @@ def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@idempotent
 def api_payments(request: HttpRequest):
     if request.method == "GET":
         payments = Payment.objects.select_related("store", "order", "trip").all()
@@ -598,14 +619,21 @@ def api_payments(request: HttpRequest):
             existing = Payment.objects.filter(uuid=payment_uuid).select_related("store", "order", "trip").first()
             if existing:
                 return _ok({"payment": _serialize_payment(existing), "duplicate": True})
+        amount = Decimal(str(payload["amount"]))
+        if not amount.is_finite() or amount < 0:
+            return _error("El monto debe ser un numero mayor o igual a cero.")
+        if payload.get("payment_type", Payment.PaymentType.PARTIAL) not in Payment.PaymentType.values:
+            return _error("Tipo de pago invalido.")
+        if payload.get("method", Payment.Method.CASH) not in Payment.Method.values:
+            return _error("Metodo de pago invalido.")
         payment_data = {
             "store": store,
             "order": order,
             "trip": trip,
-            "amount": Decimal(str(payload["amount"])),
+            "amount": amount,
             "payment_type": payload.get("payment_type", Payment.PaymentType.PARTIAL),
             "method": payload.get("method", Payment.Method.CASH),
-            "sync_status": payload.get("sync_status", Payment.SyncStatus.SYNCED),
+            "sync_status": Payment.SyncStatus.SYNCED,
             "note": str(payload.get("note", "")).strip(),
         }
         if payment_uuid:

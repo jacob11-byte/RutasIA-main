@@ -4,7 +4,7 @@ services:
     name: flamia
     runtime: python
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: gunicorn flamia.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
+    startCommand: python manage.py migrate --noinput && gunicorn flamia.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
     envVars:
       - key: DATABASE_URL
         sync: false

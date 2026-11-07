@@ -172,8 +172,9 @@ class TripLifecycleService:
             trip.started_at = timezone.now()
         trip.completed_at = timezone.now()
         trip.save(update_fields=["status", "started_at", "completed_at", "updated_at"])
-        trip.orders.update(status=Order.Status.DELIVERED)
-        trip.stops.exclude(status=RouteStop.Status.NOT_DELIVERED).update(
+        failed_order_ids = trip.stops.filter(status=RouteStop.Status.NOT_DELIVERED, order_id__isnull=False).values_list("order_id", flat=True)
+        trip.orders.exclude(id__in=failed_order_ids).update(status=Order.Status.DELIVERED)
+        trip.stops.filter(status=RouteStop.Status.PENDING).update(
             status=RouteStop.Status.DELIVERED,
             delivered_at=trip.completed_at,
         )

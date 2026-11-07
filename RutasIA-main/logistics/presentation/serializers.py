@@ -109,6 +109,8 @@ def _serialize_store(store: Store) -> dict:
         "department_name": store.department.name,
         "latitude": float(store.latitude),
         "longitude": float(store.longitude),
+        "location_accuracy_m": store.location_accuracy_m,
+        "location_captured_at": store.location_captured_at.isoformat() if store.location_captured_at else None,
         "is_active": store.is_active,
         "balance_due": _as_float(balance_due) if balance_due is not None else 0,
     }
@@ -198,6 +200,10 @@ def _serialize_route_stop(stop: RouteStop) -> dict:
         "latitude": float(stop.latitude) if stop.latitude is not None else None,
         "longitude": float(stop.longitude) if stop.longitude is not None else None,
         "delivered_at": stop.delivered_at.isoformat() if stop.delivered_at else None,
+        "delivery_latitude": float(stop.delivery_latitude) if stop.delivery_latitude is not None else None,
+        "delivery_longitude": float(stop.delivery_longitude) if stop.delivery_longitude is not None else None,
+        "delivery_accuracy_m": stop.delivery_accuracy_m,
+        "delivery_captured_at": stop.delivery_captured_at.isoformat() if stop.delivery_captured_at else None,
     }
 
 
