@@ -1,0 +1,620 @@
+0000	Normal	UNIVERSIDAD MARIANO GÁLVEZ DE GUATEMALA
+0001	Normal	FACULTAD DE INGENIERÍA EN SISTEMAS DE INFORMACIÓN
+0002	Normal	
+0003	Normal	"ALACENA: SISTEMA WEB DE GESTIÓN DE ALIMENTOS DEL HOGAR
+CON RECETAS ASISTIDAS POR INTELIGENCIA ARTIFICIAL"
+0004	Normal	ENTREGA DE PROYECTO FINAL
+0005	Normal	ISAAC ARIANO ALVAREZ
+0006	Normal	GUATEMALA, OCTUBRE DE 2026
+0007	Normal	Índice
+0008	Normal	Introducción	3
+0009	Normal	Objetivo General	3
+0010	Normal	Objetivos Específicos	3
+0011	Normal	Criterio de Elaboración	4
+0012	Normal	1. Instrumentos Utilizados	5
+0013	Normal	1.1 Lenguaje de Programación	5
+0014	Normal	1.2 Base de Datos	6
+0015	Normal	1.3 Arquitectura	7
+0016	Normal	1.4 Funciones	10
+0017	Normal	1.5 Características	12
+0018	Normal	1.6 Análisis Técnico	13
+0019	Normal	1.7 Análisis de Riesgo	17
+0020	Normal	1.8 Diagramas de Caso de Uso	19
+0021	Normal	1.9 Diagramas de Secuencia	23
+0022	Normal	1.10 Diagramas de Estado	26
+0023	Normal	1.11 Diagrama Entidad–Relación	29
+0024	Normal	1.12 Patrones de Arquitectura	35
+0025	Normal	2. Conclusiones	36
+0026	Normal	3. Recomendaciones	37
+0027	Normal	4. Glosario	38
+0028	Normal	5. Bibliografía	40
+0029	Normal	6. Anexos	42
+0030	Normal	6.1 Mapa Mental	42
+0031	Normal	6.2 Tabla de Figuras	44
+0032	Normal	6.3 Matriz de Trazabilidad Funcional	45
+0033	Normal	6.4 Pruebas de Verificación de una Misma Función	45
+0034	Normal	6.5 Lectura de Evidencias y Control Documental	46
+0035	Normal	Alacena: Sistema Web de Gestión de Alimentos del Hogar
+0036	Heading 1	Introducción
+0037	Normal	Alacena es un sistema web de gestión de alimentos del hogar. Ayuda a las personas a saber qué alimentos tienen en casa, cuándo vencen, qué pueden cocinar con ellos y qué les falta comprar, integrando en una sola aplicación el registro de compras, la despensa virtual, las recetas con inteligencia artificial, la planificación de comidas y el control de existencias. La aplicación está disponible en https://alacena.arianotech.com.
+0038	Normal	El recorrido principal comienza al registrar una compra mediante una factura, un código de barras o una captura manual. El usuario revisa los productos y los confirma; estos pasan a la despensa organizados por lotes, con su cantidad, unidad, ubicación y fecha de vencimiento. A partir de lo que hay disponible, la aplicación propone recetas, permite planificar las comidas de la semana y calcula la lista de compras con los faltantes. Cuando el usuario confirma que cocinó, el sistema descuenta los ingredientes utilizados y conserva el historial de cada movimiento.
+0039	Heading 2	Objetivo General
+0040	Normal	Permitir que los integrantes de un hogar registren los alimentos que compran, conozcan lo que tienen disponible y decidan qué cocinar con ello, mediante una aplicación web que combina un inventario trazable, recetas asistidas por inteligencia artificial y la planificación de comidas y compras.
+0041	Heading 2	Objetivos Específicos
+0042	List Paragraph	Registrar las compras a partir de facturas, códigos de barras o captura manual, con revisión del usuario antes de ingresar los alimentos al inventario.
+0043	List Paragraph	Mantener una despensa virtual organizada por lotes, con cantidades, unidades, ubicaciones y fechas de vencimiento.
+0044	List Paragraph	Proponer recetas con inteligencia artificial que aprovechen los ingredientes disponibles, respetando las porciones, las preferencias y las restricciones alimentarias del hogar.
+0045	List Paragraph	Planificar las comidas de la semana y generar la lista de compras con los faltantes.
+0046	List Paragraph	Descontar del inventario únicamente lo que se cocina, previa confirmación del usuario, conservando la trazabilidad de cada movimiento.
+0047	Heading 2	Criterio de Elaboración
+0048	Normal	Alacena se construye sobre cuatro criterios. Primero, la inteligencia artificial sugiere y el usuario decide: una imagen o una receta propuesta no modifica el inventario hasta que el usuario la confirma. Segundo, cada alimento conserva su origen y cada cambio de cantidad queda registrado, de modo que siempre se puede explicar de dónde viene una existencia y por qué cambió. Tercero, los datos y los permisos se separan por hogar. Cuarto, las cantidades se manejan con unidades compatibles, sin inventar equivalencias entre masa, volumen y piezas.
+0049	Normal	El sistema tampoco promete más de lo que hace: no garantiza recetas válidas para cualquier combinación de alimentos, no funciona sin conexión.
+0050	Heading 1	1. Instrumentos Utilizados
+0051	Normal	La construcción y evaluación de Alacena se apoyan en instrumentos de desarrollo, persistencia, despliegue y verificación. TypeScript permite expresar contratos y tipos; PostgreSQL proporciona persistencia relacional; los frameworks organizan la interfaz y los servicios; las pruebas permiten contrastar las reglas de negocio (Alacena, 2026a; Microsoft, s. f.-b; NestJS, s. f.; PostgreSQL Global Development Group, s. f.-a, s. f.-b).
+0052	Normal	Tabla 1
+0053	Normal	Instrumentos Utilizados en el Desarrollo y la Verificación de Alacena
+0054	Normal	
+0055	Heading 2	1.1 Lenguaje de Programación
+0056	Normal	Tabla 2
+0057	Normal	Lenguajes y Recursos de Programación Utilizados
+0058	Normal	
+0059	Normal	El tipado estático no reemplaza la validación en tiempo de ejecución: una petición HTTP o una respuesta de IA puede incumplir el contrato. Por ello, el backend valida los datos recibidos antes de aplicar reglas o persistirlos (Alacena, 2026a; Microsoft, s. f.-b; NestJS, s. f.).
+0060	Heading 2	1.2 Base de Datos
+0061	Normal	La persistencia central del sistema es PostgreSQL administrado en Neon. Los datos del negocio y la autenticación pertenecen al mismo entorno de base de datos: el esquema de negocio se administra con Prisma y el servicio de autenticación mantiene sus estructuras en neon_auth. Una base aislada utilizada en pruebas no sustituye la base real ni se utiliza como almacén permanente de los usuarios (Alacena, 2026c; Neon, s. f.).
+0062	Normal	Tabla 3
+0063	Normal	Definición de la Base de Datos de Alacena
+0064	Normal	
+0065	Heading 3	Integridad y Persistencia
+0066	Normal	Las claves foráneas preservan las asociaciones y las restricciones únicas evitan combinaciones duplicadas, por ejemplo un plan semanal por hogar o más de un evento de cocción para la misma entrada planificada. La verificación de permisos y las reglas del dominio siguen siendo responsabilidad de los servicios; una relación de base de datos no autoriza por sí sola el acceso (Alacena, 2026c; OWASP Foundation, s. f.; PostgreSQL Global Development Group, s. f.-a).
+0067	Normal	Las compras, la importación confirmada y la cocción agrupan escrituras relacionadas en transacciones. Si una operación crítica falla, no deben quedar lotes modificados sin su evento ni movimientos incompletos. Las rutas con reintento transaccional atienden conflictos de concurrencia de forma acotada, sin reintentar indefinidamente (Alacena, 2026a; PostgreSQL Global Development Group, s. f.-b).
+0068	Heading 3	Regla de Unidades
+0069	Normal	Los gramos, los kilogramos y las libras pertenecen a la masa; los mililitros y los litros, al volumen. No se transforma una unidad de pieza a gramos ni de masa a volumen sin información suficiente del producto. Una conversión aritmética no debe inventar una equivalencia culinaria.
+0070	Heading 2	1.3 Arquitectura
+0071	Heading 3	Arquitectura Lógica
+0072	Normal	Alacena utiliza un monorepositorio con frontend y API desplegados por separado. El backend es un monolito modular: divide las responsabilidades por dominio y comparte servicios e infraestructura de datos. No se describe como una arquitectura de microservicios, ya que sus módulos no son servicios autónomos con despliegues y bases independientes (Alacena, 2026a; NestJS, s. f.; Vercel, s. f.).
+0073	Normal	Figura 1
+0074	Normal	Arquitectura Lógica y Límites de Responsabilidad
+0075	Normal	
+0076	Normal	Nota. Elaboración propia.
+0077	Normal	La capa servidor de Next.js actúa como frontera adaptada a la interfaz: recupera la sesión y comunica las acciones con la API. NestJS aplica las validaciones y las reglas; Prisma administra el acceso relacional. La identidad se delega al servicio de autenticación y la IA se consume como dependencia externa (Alacena, 2026a; NestJS, s. f.; Neon, s. f.; Vercel, s. f.).
+0078	Heading 3	Componentes y Despliegue
+0079	Normal	Tabla 4
+0080	Normal	Componentes de la Arquitectura, Responsabilidades y Tecnología Declarada
+0081	Normal	
+0082	Normal	Las versiones de la Tabla 4 proceden de los manifiestos del proyecto. No representan las versiones más recientes del mercado ni una comprobación de la versión del motor PostgreSQL del proveedor. El archivo de bloqueo de dependencias permite reproducir la instalación (Alacena, 2026a).
+0083	Heading 3	Organización del Repositorio
+0084	Normal	Tabla 5
+0085	Normal	Organización del Repositorio de Alacena
+0086	Normal	
+0087	Normal	El dominio público utiliza HTTPS. Los contenedores web y API se comunican mediante la infraestructura del servidor; la base de datos se mantiene en Neon. Docker Compose describe los servicios y sus dependencias, pero no demuestra por sí solo alta disponibilidad ni recuperación automática ante cualquier fallo (Alacena, 2026a; Docker, Inc., s. f.).
+0088	Heading 2	1.4 Funciones
+0089	Normal	Tabla 6
+0090	Normal	Módulos Funcionales y Resultados para el Usuario
+0091	Normal	
+0092	Normal	El catálogo normaliza nombres e ingredientes para relacionar compras e inventario; no obliga al usuario a mantener previamente una lista exhaustiva de todos los alimentos existentes. Cuando el reconocimiento no identifica un producto con certeza, la captura manual y la revisión permiten completar el registro (Alacena, 2026a).
+0093	Heading 3	Reglas de Negocio Esenciales
+0094	Normal	Tabla 7
+0095	Normal	Reglas de Negocio Esenciales y Comportamiento Esperado
+0096	Normal	
+0097	Normal	Estas reglas separan sugerir, decidir y ejecutar. La IA auxilia en el reconocimiento y la propuesta, mientras que las escrituras definitivas dependen de validaciones deterministas y de confirmaciones del usuario (Alacena, 2026a, 2026d).
+0098	Heading 2	1.5 Características
+0099	Normal	Tabla 8
+0100	Normal	Características del Sistema y su Alcance
+0101	Normal	
+0102	Heading 3	Límites Operativos
+0103	Normal	No todos los códigos comerciales se encuentran en un catálogo externo ni todos disponen de fotografía. Una factura deteriorada o una unidad ambigua necesita revisión. La aplicación no puede garantizar recetas válidas para cualquier combinación de alimentos, una disponibilidad continua del proveedor ni un tiempo constante de respuesta. La ausencia de una propuesta debe explicarse sin alterar la despensa.
+0104	Normal	El sistema no se presenta como una aplicación sin conexión ni como una plataforma cuya capacidad para miles de usuarios haya sido acreditada. Tales atributos requieren implementación o pruebas específicas. La utilidad de la herramienta tampoco demuestra por sí sola una reducción cuantificada del desperdicio (Alacena, 2026a, 2026b).
+0105	Heading 2	1.6 Análisis Técnico
+0106	Heading 3	Consistencia del Flujo de Datos
+0107	Normal	El diseño conecta la entrada de alimentos con su consumo mediante entidades persistentes. ReceiptImport conserva la interpretación; InventoryLot representa las existencias; InventoryMovement explica sus cambios. CookingEvent y ConsumptionItem vinculan la preparación con los lotes utilizados. Esta separación evita confundir una sugerencia de IA con una operación de inventario (Alacena, 2026c, 2026d).
+0108	Heading 3	Validación y Manejo de Errores
+0109	Normal	Los DTO delimitan las entradas de las rutas y los esquemas estructurados comprueban las respuestas de IA. Después se aplican las reglas del negocio: membresía, disponibilidad, unidades, porciones y estado del registro. La validación de estructura no acredita por sí sola que una receta sea culinariamente adecuada; ese control requiere reglas adicionales y revisión de contenido.
+0110	Normal	Tabla 9
+0111	Normal	Respuesta del Diseño ante Situaciones de Error
+0112	Normal	
+0113	Heading 3	Seguridad de Acceso
+0114	Normal	La autenticación identifica al usuario; la autorización determina qué puede consultar o cambiar. La frontera web utiliza la sesión vigente y un token interno firmado de corta duración hacia la API. Los servicios verifican el estado de la cuenta, la membresía y la pertenencia del recurso al hogar. Este enfoque coincide con el principio de verificar permisos en cada operación y no confiar en controles del cliente (Alacena, 2026a; Neon, s. f.; OWASP Foundation, s. f.).
+0115	Normal	Las claves de proveedor y las cadenas de conexión se gestionan como configuración del servidor. No deben incorporarse al navegador, al repositorio público ni a los anexos. Los registros de diagnóstico deben minimizar la información privada. La eliminación de una cuenta requiere autorización y coherencia entre identidad, sesiones y datos del negocio.
+0116	Heading 3	Desempeño y Costo Operativo
+0117	Normal	La generación de recetas utiliza un trabajo persistente. El servidor obtiene las existencias, reutiliza propuestas compatibles cuando corresponde y solicita al proveedor las opciones restantes. Después valida los resultados y registra el consumo de tokens. Esto reduce solicitudes innecesarias, pero no elimina la dependencia de un servicio externo ni equivale a una generación ilimitada (Alacena, 2026d).
+0118	Normal	Tabla 10
+0119	Normal	Medición Documentada de la Generación de Recetas
+0120	Normal	
+0121	Heading 3	Interpretación de la Evidencia
+0122	Normal	Se trata de una observación en un escenario concreto, no de una prueba de carga ni de un compromiso de tiempo de respuesta. La latencia varía con la solicitud, el proveedor, la red y la concurrencia (Alacena, 2026b).
+0123	Heading 3	Capacidad y Sostenibilidad
+0124	Normal	La capacidad debe evaluarse por flujos, no solo por número de cuentas. Consultar la despensa, interpretar una factura y generar recetas consumen recursos diferentes. Deben medirse la concurrencia, la cola, las conexiones de base de datos, la latencia en el percentil 95, los errores y el gasto por operación. La solución incluye control de uso y presupuesto de IA, pero sus umbrales deben ajustarse con evidencia de consumo real.
+0125	Normal	Una estrategia sostenible combina reutilización compatible, solicitudes acotadas, límites comprensibles, seguimiento de costo y recuperación sin duplicar llamadas. Un resultado antiguo solo puede reutilizarse después de compararlo con las existencias y las restricciones actuales (Alacena, 2026d).
+0126	Heading 3	Verificación y Mantenibilidad
+0127	Normal	Tabla 11
+0128	Normal	Niveles de Comprobación, Alcance y Herramientas
+0129	Normal	
+0130	Normal	Jest facilita las pruebas automatizadas y Playwright permite ejecutar recorridos de navegador. Su disponibilidad no demuestra cobertura total: importa qué escenarios se ejecutan y qué resultados se conservan. La emulación de tamaño móvil no reemplaza las pruebas de cámara y teclado en dispositivos físicos (Alacena, 2026a; Jest, s. f.; Microsoft, s. f.-a).
+0131	Heading 3	Observaciones Técnicas
+0132	List Paragraph	La centralización de escrituras críticas favorece la consistencia y la idempotencia.
+0133	List Paragraph	La separación de captura y confirmación disminuye el efecto de los errores de reconocimiento.
+0134	List Paragraph	Los permisos por hogar deben probarse también con identificadores de otro hogar y con membresías suspendidas.
+0135	List Paragraph	Las traducciones, los mensajes de error y las ayudas deben verificarse en el recorrido completo, no solo en el menú.
+0136	List Paragraph	El despliegue reproducible debe acompañarse de copias verificadas y ejercicios de restauración.
+0137	List Paragraph	No se considera publicada una función por el solo hecho de existir en una rama o preparación local.
+0138	Heading 3	Criterios de Aceptación Transversal
+0139	Normal	Una operación se considera aceptable cuando produce el resultado autorizado, no modifica datos ajenos, conserva la integridad, informa un error recuperable cuando no puede completarse y mantiene la trazabilidad necesaria. En las interfaces móviles, los controles deben poder operarse sin recorte horizontal ni pérdida de acciones esenciales.
+0140	Heading 2	1.7 Análisis de Riesgo
+0141	Normal	Se utiliza una matriz cualitativa de probabilidad (P) e impacto (I), ambos de 1 a 5. El nivel se calcula como P × I: bajo, de 1 a 4; moderado, de 5 a 9; alto, de 10 a 15; y crítico, de 16 a 25. Los valores son una estimación técnica para priorizar, no frecuencias observadas ni resultados de una encuesta.
+0142	Normal	Tabla 12
+0143	Normal	Matriz de Riesgos de Probabilidad por Impacto
+0144	Normal	
+0145	Normal	El impacto 5 corresponde a una afectación grave de privacidad, seguridad de uso o continuidad. La prioridad de R02 y R07 deriva de la dependencia de entradas externas y del costo variable. El riesgo residual debe revisarse después de aplicar y probar los controles, sin asignarle una reducción automática.
+0146	Heading 3	Controles y Tratamiento
+0147	Normal	Tabla 13
+0148	Normal	Controles Existentes y Acciones de Seguimiento por Riesgo
+0149	Normal	
+0150	Heading 3	Respuesta a Incidentes
+0151	Normal	Ante un incidente se identifica el alcance, se detiene la operación riesgosa, se preserva la evidencia sin secretos y se corrige o revierte el cambio. Después se concilian los datos afectados y se incorpora una prueba de regresión. Para incidentes de integridad, no debe restaurarse una copia sobre datos actuales sin analizar primero las operaciones posteriores que podrían perderse.
+0152	Heading 2	1.8 Diagramas de Caso de Uso
+0153	Normal	Los casos de uso presentan las metas de los actores dentro del sistema. Las líneas indican participación, no orden de ejecución. Los detalles de validación se describen en las fichas y en los diagramas de secuencia. La notación adopta actores, límites del sistema y casos de uso de UML (Object Management Group, 2017).
+0154	Heading 3	Casos de Uso del Usuario del Hogar
+0155	Normal	Figura 2
+0156	Normal	Casos de Uso Principales del Usuario del Hogar
+0157	Normal	
+0158	Normal	Nota. Elaboración propia.
+0159	Normal	El usuario registra y consulta información de su hogar. Para las operaciones protegidas debe contar con sesión y membresía activa. Los proveedores de IA, identidad y catálogo son colaboradores externos de la solución, no propietarios de las decisiones de inventario.
+0160	Heading 3	Casos de Uso de la Administración
+0161	Normal	Figura 3
+0162	Normal	Casos de Uso del Administrador de Plataforma
+0163	Normal	
+0164	Normal	Nota. Elaboración propia.
+0165	Normal	La administración de plataforma tiene un alcance distinto de la administración del hogar. La cuenta protegida de propietario no se elimina mediante las acciones ordinarias. Una confirmación visual no sustituye la comprobación de permisos y condiciones en el servidor.
+0166	Normal	Tabla 14
+0167	Normal	Actores del Sistema, Responsabilidades y Restricciones
+0168	Normal	
+0169	Heading 3	Especificaciones de Casos de Uso
+0170	Normal	Tabla 15
+0171	Normal	Especificación del Caso de Uso UC-01: Registrar Alimentos desde Factura
+0172	Normal	
+0173	Normal	Tabla 16
+0174	Normal	Especificación del Caso de Uso UC-02: Obtener Recetas según la Despensa
+0175	Normal	
+0176	Normal	Tabla 17
+0177	Normal	Especificación del Caso de Uso UC-03: Confirmar Preparación de Receta
+0178	Normal	
+0179	Heading 2	1.9 Diagramas de Secuencia
+0180	Normal	Los diagramas muestran intercambios en orden temporal. Las flechas continuas representan solicitudes o acciones y las discontinuas, respuestas. Se agrupan detalles técnicos para mantener la legibilidad; las condiciones alternativas se especifican debajo de cada figura (Alacena, 2026a; Object Management Group, 2017).
+0181	Heading 3	Análisis y Confirmación de una Factura
+0182	Normal	Figura 4
+0183	Normal	Secuencia de Análisis y Confirmación de una Factura
+0184	Normal	
+0185	Normal	Nota. Elaboración propia.
+0186	Normal	Alternativas: una imagen ya registrada puede reutilizar el análisis sin una nueva lectura; un error de extracción no crea existencias; una confirmación repetida debe reconocer el registro importado. La transacción final incluye los vínculos entre líneas, lotes y movimientos.
+0187	Heading 3	Generación y Consulta de Recetas
+0188	Normal	Figura 5
+0189	Normal	Secuencia de Generación Persistente y Apertura de Recetas
+0190	Normal	
+0191	Normal	Nota. Elaboración propia.
+0192	Normal	La llamada al proveedor es condicional: la reutilización compatible puede resolver parte de la solicitud. El trabajo conserva el resultado y su estado para la consulta. Si no se obtiene una respuesta válida, se informa el fallo; no se consideran disponibles ingredientes inexistentes ni se altera el inventario (Alacena, 2026d).
+0193	Heading 3	Confirmación de Cocción
+0194	Normal	Figura 6
+0195	Normal	Secuencia Transaccional de Consumo de Ingredientes
+0196	Normal	
+0197	Normal	Nota. Elaboración propia.
+0198	Normal	La existencia se valida al confirmar, porque otro usuario o una operación anterior puede haber cambiado los lotes desde que se abrió la receta. Si el evento ya existe, se devuelve su resultado. Si ocurre un conflicto transaccional, la política de reintento es acotada; no se confirma una preparación parcial (Alacena, 2026a; PostgreSQL Global Development Group, s. f.-b).
+0199	Heading 2	1.10 Diagramas de Estado
+0200	Normal	El estado de análisis y el estado de negocio son dimensiones diferentes. Una factura puede tener una interpretación lista y seguir pendiente de revisión. Los diagramas respetan los nombres persistidos y evitan introducir estados que no existen en el esquema (Alacena, 2026c; Object Management Group, 2017).
+0201	Heading 3	Estados de la Factura
+0202	Normal	Figura 7
+0203	Normal	Estados de Análisis y de Importación de una Factura
+0204	Normal	
+0205	Normal	Nota. Elaboración propia.
+0206	Normal	PENDING significa análisis pendiente; READY indica resultado disponible; FAILED registra el fallo del análisis. REVIEW y CONFIRMED describen la incorporación al inventario. REJECTED está definido en el modelo, pero no se afirma que exista una acción de interfaz que exponga todas las transiciones posibles.
+0207	Heading 3	Estados del Trabajo de Inteligencia Artificial
+0208	Normal	Figura 8
+0209	Normal	Estados de Ejecución y Revisión de una Generación de IA
+0210	Normal	
+0211	Normal	Nota. Elaboración propia.
+0212	Normal	PENDING cubre la espera y la ejecución operativa hasta un resultado terminal. COMPLETED y FAILED permiten distinguir un resultado final de un error. La revisión PENDING, ACCEPTED o REJECTED se utiliza según el flujo de IA, sin confundir completar una generación con confirmar el consumo de una receta.
+0213	Heading 3	Inventario y Estados Derivados
+0214	Normal	Vencido, por vencer y stock bajo se obtienen de fechas y cantidades; no deben presentarse como un enum universal de estado del lote. Las condiciones dependen del contexto de consulta y no sustituyen el registro de movimientos.
+0215	Heading 2	1.11 Diagrama Entidad–Relación
+0216	Normal	El modelo de negocio contiene 25 entidades Prisma. Para facilitar su lectura se presenta en cuatro vistas relacionadas. Los cuadros muestran claves y atributos principales, no todas las columnas. Los conectores señalan las relaciones principales; las claves foráneas escritas en los cuadros y el diccionario completan las relaciones omitidas para evitar cruces (Alacena, 2026c).
+0217	Heading 3	Identidad, Hogares y Perfiles
+0218	Normal	Figura 9
+0219	Normal	Modelo Entidad–Relación: Identidad, Hogares y Perfiles
+0220	Normal	
+0221	Normal	Nota. Elaboración propia.
+0222	Normal	HouseholdMember resuelve la relación entre usuarios y hogares. FoodProfile pertenece a un hogar y puede asociarse de forma única a un integrante. AdminMessage referencia dos veces a UserProfile, con papeles de remitente y destinatario. Las tablas administradas de neon_auth no se incluyen como modelos Prisma de negocio ni se inventa una clave foránea física hacia ellas.
+0223	Heading 3	Catálogo, Inventario y Facturas
+0224	Normal	Figura 10
+0225	Normal	Modelo Entidad–Relación: Catálogo, Lotes, Movimientos e Importaciones
+0226	Normal	
+0227	Normal	Nota. Elaboración propia.
+0228	Normal	InventoryLot asocia ingrediente, producto opcional y ubicación opcional. ReceiptImportItem puede vincular el ingrediente reconocido y el lote efectivamente ingresado. ProductBarcode pertenece a un producto y a un hogar. Los ingredientes, los alias y los productos pueden incluir registros globales o privados; las consultas deben respetar esa distinción.
+0229	Normal	No se dibujan todos los enlaces para evitar superposiciones: InventoryLot.productId referencia a Product y ReceiptImportItem.ingredientId referencia a Ingredient. Los campos householdId relacionan sus entidades con Household; la pertenencia de los hijos se deriva también del registro principal.
+0230	Heading 3	Recetas, Planificación y Consumo
+0231	Normal	Figura 11
+0232	Normal	Modelo Entidad–Relación: Recetas, Plan, Generación y Cocción
+0233	Normal	
+0234	Normal	Nota. Elaboración propia.
+0235	Normal	RecipeIngredient resuelve la relación receta–ingrediente con cantidad, unidad y carácter opcional. Una MealPlanEntry admite como máximo un CookingEvent. ConsumptionItem detalla qué lote abasteció el consumo. AiGeneration conserva solicitudes y resultados del hogar; su atribución requestedByUserId es un campo de texto, no una relación foránea declarada en el esquema.
+0236	Normal	Las referencias a Household y el enlace adicional ConsumptionItem.ingredientId → Ingredient se omiten gráficamente para simplificar la vista, pero permanecen en el modelo. Las cantidades de cada consumo permiten conciliar el evento con los movimientos del inventario.
+0237	Heading 3	Lista y Confirmación de Compras
+0238	Normal	Figura 12
+0239	Normal	Modelo Entidad–Relación: Compras y Lotes Ingresados
+0240	Normal	
+0241	Normal	Nota. Elaboración propia.
+0242	Normal	ShoppingListItem admite un ingrediente opcional para representar también artículos manuales. PurchaseEvent agrupa la confirmación y PurchaseEventItem enlaza cada artículo comprado con el lote creado o relacionado. La identidad del evento y las restricciones únicas impiden aplicar nuevamente la misma confirmación.
+0243	Normal	Los enlaces a Household y ShoppingListItem.ingredientId → Ingredient se conservan en el esquema, aunque no se dibujan en esta vista. Los elementos generados desde el plan incorporan la unidad en su clave de agrupación; las cantidades incompatibles no deben fusionarse como si fueran equivalentes.
+0244	Heading 3	Diccionario de Entidades
+0245	Normal	Tabla 18
+0246	Normal	Diccionario de Entidades del Modelo de Negocio
+0247	Normal	
+0248	Heading 3	Restricciones Representativas
+0249	Normal	Tabla 19
+0250	Normal	Restricciones Representativas del Esquema y su Propósito
+0251	Normal	
+0252	Heading 2	1.12 Patrones de Arquitectura
+0253	Normal	Los patrones describen decisiones organizativas observables en el proyecto. Su utilidad se evalúa por el problema que resuelven y por sus costos de mantenimiento; no son etiquetas que sustituyan las pruebas o una buena separación de responsabilidades (Alacena, 2026a; NestJS, s. f.; Vercel, s. f.).
+0254	Normal	Tabla 20
+0255	Normal	Patrones de Arquitectura, Aplicación, Beneficio y Consideración
+0256	Normal	
+0257	Normal	InventoryMovement es un historial de movimientos, pero la arquitectura no se presenta como event sourcing: las existencias también se almacenan en lotes. Tampoco se atribuye CQRS, una arquitectura hexagonal completa ni microservicios sin una implementación que respalde esas denominaciones.
+0258	Heading 1	2. Conclusiones
+0259	Normal	Alacena establece un recorrido integrado entre compras, despensa, recetas, planificación y consumo. El modelo de datos permite relacionar el origen de una existencia con las operaciones que la modifican, en lugar de mantener módulos aislados sin conciliación.
+0260	Normal	La separación entre la interpretación de la IA y la confirmación de negocio es una decisión central. Una imagen o una propuesta no modifica automáticamente el inventario; el usuario revisa y el servidor valida antes de persistir efectos definitivos.
+0261	Normal	La base PostgreSQL centralizada, las relaciones y las transacciones proporcionan mecanismos de consistencia. La autorización por hogar complementa esas restricciones y debe comprobarse en cada operación que accede a datos privados.
+0262	Normal	El modo de recetas basado en la despensa depende tanto de los ingredientes como de las cantidades, unidades, porciones y restricciones. La normalización de nombres y las sustituciones explícitas ayudan a adaptar propuestas sin afirmar que cualquier producto es intercambiable.
+0263	Normal	La generación persistente y la reutilización compatible ofrecen una base para controlar la espera y el costo. La medición documentada confirma el comportamiento del caso observado, pero no acredita por sí sola una latencia universal ni una capacidad para miles de usuarios.
+0264	Normal	Las pruebas automatizadas y de recorrido aportan evidencia de reglas y flujos específicos. La calidad operativa requiere ampliarlas a concurrencia, recuperación, traducción completa, dispositivos físicos y casos diversos de captura.
+0265	Normal	Los diagramas y el diccionario de datos facilitan el mantenimiento y la transferencia de conocimiento. Deben actualizarse cuando cambien las entidades, los contratos o las reglas, para conservar la correspondencia entre la documentación y la implementación.
+0266	Normal	En conjunto, la solución aporta una estructura técnica coherente para administrar los alimentos del hogar. La continuidad y la expansión del servicio deben sostenerse en controles verificables, observabilidad y pruebas representativas, sin confundir funciones disponibles con atributos todavía no medidos.
+0267	Heading 1	3. Recomendaciones
+0268	Normal	Las recomendaciones se presentan por prioridad, junto con el criterio que permitirá verificar su cumplimiento.
+0269	Normal	Tabla 21
+0270	Normal	Recomendaciones Priorizadas y Criterios de Verificación
+0271	Normal	
+0272	Normal	Las prioridades son propuestas de tratamiento, no afirmaciones de que todas estas ampliaciones estén implementadas. Funciones como la operación sin conexión, las exportaciones adicionales o las invitaciones más amplias deben evaluarse con alcance y aceptación propios antes de incorporarlas.
+0273	Heading 1	4. Glosario
+0274	Normal	Tabla 22
+0275	Normal	Glosario de Términos Técnicos
+0276	Normal	
+0277	Heading 1	5. Bibliografía
+0278	Normal	Alacena. (2026a). Código fuente y configuración del sistema [Repositorio del proyecto]. frontend/package.json; backend/package.json; backend/src/modules; frontend/src; infrastructure
+0279	Normal	Alacena. (2026b, 23 de octubre). Generación de recetas en producción [Registro de verificación]. docs/VERIFICACION_GENERACION_2026-10-23.md
+0280	Normal	Alacena. (2026c). Modelo de datos y migraciones [Esquema de negocio]. database/prisma/schema.prisma y database/prisma/migrations
+0281	Normal	Alacena. (2026d). Recetas según despensa [Especificación funcional y técnica]. docs/RECETAS_DESPENSA.md
+0282	Normal	Docker, Inc. (s. f.). Docker Compose. Recuperado el 24 de octubre de 2026, de https://docs.docker.com/compose/
+0283	Normal	Jest. (s. f.). Getting started. Recuperado el 24 de octubre de 2026, de https://jestjs.io/docs/getting-started
+0284	Normal	Microsoft. (s. f.-a). Installation. Playwright. Recuperado el 24 de octubre de 2026, de https://playwright.dev/docs/intro
+0285	Normal	Microsoft. (s. f.-b). TypeScript documentation. Recuperado el 24 de octubre de 2026, de https://www.typescriptlang.org/docs/
+0286	Normal	Neon. (s. f.). Neon Auth overview. Recuperado el 24 de octubre de 2026, de https://neon.com/docs/auth/overview
+0287	Normal	NestJS. (s. f.). Documentation. Recuperado el 24 de octubre de 2026, de https://docs.nestjs.com/
+0288	Normal	Object Management Group. (2017). Unified Modeling Language, version 2.5.1. https://www.omg.org/spec/UML/2.5.1
+0289	Normal	OWASP Foundation. (s. f.). Authorization cheat sheet. Recuperado el 24 de octubre de 2026, de https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
+0290	Normal	PostgreSQL Global Development Group. (s. f.-a). Constraints. PostgreSQL Documentation. Recuperado el 24 de octubre de 2026, de https://www.postgresql.org/docs/current/ddl-constraints.html
+0291	Normal	PostgreSQL Global Development Group. (s. f.-b). Transaction isolation. PostgreSQL Documentation. Recuperado el 24 de octubre de 2026, de https://www.postgresql.org/docs/current/transaction-iso.html
+0292	Normal	Vercel. (s. f.). Server and client components. Next.js Documentation. Recuperado el 24 de octubre de 2026, de https://nextjs.org/docs/app/getting-started/server-and-client-components
+0293	Heading 1	6. Anexos
+0294	Heading 2	6.1 Mapa Mental
+0295	Normal	El mapa organiza el propósito del sistema en seis áreas relacionadas. La captura y la organización proporcionan la información necesaria para cocinar y planificar; la seguridad y el seguimiento sostienen el funcionamiento del conjunto.
+0296	Normal	Figura 13
+0297	Normal	Mapa Mental de Alacena y sus Áreas Funcionales
+0298	Normal	
+0299	Normal	Nota. Elaboración propia.
+0300	Heading 3	Lectura del Mapa
+0301	Normal	El centro representa la despensa virtual del hogar. Las ramas no son aplicaciones separadas: comparten información y reglas. Una compra confirmada modifica las existencias; una receta utiliza esas existencias como referencia; una preparación confirmada registra su consumo; el historial permite revisar lo ocurrido.
+0302	Heading 2	6.2 Tabla de Figuras
+0303	Normal	Las figuras son de elaboración propia a partir del código, las reglas de negocio y el esquema de Alacena. Los diagramas de comportamiento utilizan elementos de UML; las vistas de datos simplifican relaciones para facilitar la lectura (Alacena, 2026a, 2026b, 2026c, 2026d; Object Management Group, 2017).
+0304	Normal	Figura 1. Arquitectura Lógica y Límites de Responsabilidad	8
+0305	Normal	Figura 2. Casos de Uso Principales del Usuario del Hogar	20
+0306	Normal	Figura 3. Casos de Uso del Administrador de Plataforma	21
+0307	Normal	Figura 4. Secuencia de Análisis y Confirmación de una Factura	24
+0308	Normal	Figura 5. Secuencia de Generación Persistente y Apertura de Recetas	25
+0309	Normal	Figura 6. Secuencia Transaccional de Consumo de Ingredientes	26
+0310	Normal	Figura 7. Estados de Análisis y de Importación de una Factura	27
+0311	Normal	Figura 8. Estados de Ejecución y Revisión de una Generación de IA	28
+0312	Normal	Figura 9. Modelo Entidad–Relación: Identidad, Hogares y Perfiles	29
+0313	Normal	Figura 10. Modelo Entidad–Relación: Catálogo, Lotes, Movimientos e Importaciones	30
+0314	Normal	Figura 11. Modelo Entidad–Relación: Recetas, Plan, Generación y Cocción	31
+0315	Normal	Figura 12. Modelo Entidad–Relación: Compras y Lotes Ingresados	32
+0316	Normal	Figura 13. Mapa Mental de Alacena y sus Áreas Funcionales	42
+0317	Heading 2	6.3 Matriz de Trazabilidad Funcional
+0318	Normal	Tabla 23
+0319	Normal	Matriz de Trazabilidad entre Necesidades, Soporte Técnico y Comprobación
+0320	Normal	
+0321	Heading 2	6.4 Pruebas de Verificación de una Misma Función
+0322	Normal	La función evaluada es la confirmación de cocción. Su regla consiste en consumir únicamente las cantidades disponibles y aplicar la operación una sola vez. Los valores de la Tabla 24 son datos de prueba propuestos, no productos de una cuenta real.
+0323	Normal	Tabla 24
+0324	Normal	Pruebas Positiva, Negativa y de Límite para la Confirmación de Cocción
+0325	Normal	
+0326	Heading 2	6.5 Lectura de Evidencias y Control Documental
+0327	Normal	Tabla 25
+0328	Normal	Alcance de las Evidencias: Qué Permiten y Qué No Permiten Concluir
+0329	Normal	
+0330	Heading 3	Mantenimiento del Documento
+0331	Normal	Al cambiar una entidad o relación se actualizan el diccionario y la vista entidad–relación correspondiente. Al cambiar una regla de confirmación se revisan los casos de uso, las secuencias, los criterios de prueba y los riesgos. Al incorporar un proveedor se documentan los contratos, los datos enviados, los errores, el costo y los controles de privacidad.
+0332	Normal	Los diagramas son de elaboración propia con base en el proyecto. Los resultados medidos conservan fecha y condiciones para evitar comparaciones inválidas. Las recomendaciones se revisan al completar su criterio de verificación; una preparación local no se documenta como una función publicada.
+0333	Normal	Tabla 26
+0334	Normal	Control Documental de la Entrega
+0335	Normal	
+
+TABLES
+TABLE 1
+Instrumento | Uso en el proyecto
+Repositorio y revisión del código | Identificar responsabilidades, contratos, dependencias y cambios versionados.
+Esquema Prisma y migraciones | Definir tablas, relaciones, tipos y restricciones de integridad.
+DTO y esquemas de validación | Controlar entradas del usuario y respuestas estructuradas de IA.
+Pruebas unitarias y de integración | Verificar reglas, errores, idempotencia y operaciones transaccionales.
+Automatización de navegador | Revisar recorridos, interacción y presentación en diferentes anchos.
+Registros de ejecución y medición | Observar tiempos de respuesta, estado de trabajos y conciliación de existencias.
+Diagramas y matriz de riesgos | Explicar la solución y priorizar riesgos con criterios explícitos.
+TABLE 2
+Lenguaje o recurso | Aplicación concreta
+TypeScript | Lenguaje principal del frontend, backend y contratos. Su tipado ayuda a detectar incompatibilidades antes de ejecutar.
+JavaScript / Node.js | Entorno de ejecución del código compilado y de scripts de herramientas. Node.js 22 se declara en los contenedores.
+SQL / PostgreSQL | Consultas relacionales, restricciones y migraciones para datos persistentes.
+TSX, HTML y CSS | Estructura de componentes, semántica visual, diseño adaptable, colores y presentación.
+PowerShell, scripts y Python | Apoyo de despliegue, comprobaciones y generación de documentación; no sustituyen el núcleo de la aplicación.
+TABLE 3
+Aspecto | Definición
+Modelo | Relacional, con claves primarias, foráneas, unicidad e índices definidos en el esquema.
+Acceso | Prisma 7.9.1 y adaptador PostgreSQL; las operaciones del negocio se ejecutan en el servidor.
+Unidad de separación | Hogar: los servicios comprueban la membresía y filtran los recursos por householdId o por su relación con el hogar.
+Identificadores | UUID en las entidades de negocio; el perfil de usuario conserva el identificador de identidad como texto.
+Cantidades | Decimal(12,3), acompañado de una unidad explícita.
+Costos de inventario | Decimal(12,2); no equivalen automáticamente a ahorro realizado.
+Estructuras flexibles | JSON para instrucciones de recetas, preferencias y solicitudes y respuestas de IA.
+Autenticación | Neon Auth gestiona usuarios y sesiones; el perfil de aplicación conserva datos de negocio y permisos.
+TABLE 4
+Componente | Responsabilidad | Tecnología declarada
+Interfaz | Rutas, formularios, vistas y navegación adaptable. | Next.js 16.3.0 / React 19.2.8
+Servidor web | Sesión, acciones del servidor y comunicación autenticada con la API. | Next.js / Node.js 22
+API | Casos de uso, permisos, validación y transacciones. | NestJS 11 / Express 5
+Persistencia | Modelo, migraciones y consultas. | Prisma 7.9.1 / PostgreSQL en Neon
+Autenticación | Registro, sesiones y proveedores de acceso. | Neon Auth
+IA | Interpretación de imágenes y propuestas estructuradas. | OpenAI, modelo configurable
+Captura de códigos | Lectura de códigos desde la cámara y consulta de productos. | ZXing / servicios de catálogo
+Despliegue | Construcción y ejecución de contenedores web y API. | Docker Compose
+Gestión del repositorio | Dependencias y tareas coordinadas. | pnpm 10.29.3 / Turborepo
+TABLE 5
+Ruta | Contenido
+frontend | Interfaz, autenticación web, acciones de servidor y recursos visuales.
+backend | Módulos NestJS, validación, servicios e integración con proveedores.
+database/prisma | Esquema de negocio y migraciones.
+shared/contracts | Contratos compartidos entre componentes.
+infrastructure | Contenedores, despliegue y comprobaciones operativas.
+docs | Manuales, especificaciones y evidencias de verificación.
+TABLE 6
+Módulo | Funciones principales | Resultado para el usuario
+Acceso y perfil | Registro, inicio de sesión, recuperación, preferencias y gestión de cuenta. | Acceso a sus datos y configuración personal.
+Hogar | Preferencias alimentarias, porciones, restricciones y ubicaciones. | Contexto común de alimentos y planificación.
+Captura de alimentos | Factura, código de barras, reconocimiento de producto y registro manual. | Productos revisados antes de ingresar al inventario.
+Mi despensa | Lotes, categorías, filtros, cantidades, vencimiento y ajustes. | Conocimiento de existencias y movimientos.
+Recetas con IA | Modo de despensa, ampliación de opciones, porciones, cantidad, libros e historial. | Propuestas para cocinar y pasos de preparación.
+Plan semanal | Asignación de recetas por fecha y tiempo de comida. | Organización de comidas y porciones.
+Lista de compras | Artículos manuales y faltantes calculados; confirmación de compra. | Reposición basada en necesidades registradas.
+Cocción y consumo | Confirmación de uso, validación de existencias y registro de consumo. | Descuento trazable de los alimentos realmente utilizados.
+Estadísticas | Lectura del historial de compras, ajustes y consumo. | Seguimiento de actividad y alimentos.
+Ayuda | Recorrido inicial con Tomatín y repetición desde la ayuda. | Orientación sobre los módulos.
+Administración | Consulta y gestión de cuentas, mensajes y uso autorizado. | Control operativo reservado al rol correspondiente.
+TABLE 7
+Regla | Comportamiento esperado
+Confirmación de factura | Interpretar una imagen no agrega alimentos por sí solo. El usuario revisa las líneas y confirma su incorporación.
+Duplicados | La misma imagen en el mismo hogar se identifica por su huella; las confirmaciones repetidas no deben duplicar el ingreso. Distintas fotos de una compra requieren revisión adicional.
+Solo mi despensa | Las propuestas deben usar ingredientes obligatorios disponibles y cantidades suficientes para las porciones elegidas. No se presupone sal o aceite no registrados.
+Ampliar opciones | Los faltantes se muestran expresamente; es posible consultar la receta sin tratarlos como disponibles.
+Equivalencias | Un sinónimo puede normalizar un nombre. Una sustitución culinaria exige adaptar ingredientes y pasos; no elimina alergias ni restricciones.
+Disponibilidad | Los lotes vencidos no integran el stock apto para propuestas. Las unidades deben ser compatibles.
+Lectura y guardado | Abrir el libro o guardar una receta no descuenta productos.
+Confirmar cocción | El servidor revisa las existencias actuales y registra evento, consumos y movimientos. Si falta stock obligatorio, no confirma el descuento.
+Idempotencia | La misma confirmación no produce una segunda compra o cocción.
+Alternativas | Cuatro recetas propuestas no reservan simultáneamente los ingredientes de las cuatro. Cada una se valida como opción.
+Planificación | La planificación y la preparación conservan la trazabilidad; no se sobrescribe una entrada ya cocinada.
+TABLE 8
+Característica | Aplicación en Alacena | Alcance
+Web adaptable | Vistas utilizables en móvil y computadora. | La cámara depende del navegador, del permiso y del dispositivo.
+Orientación al hogar | Alimentos, ubicaciones, compras y preferencias relacionadas. | Autorización en el servidor, no solo ocultamiento visual.
+Asistencia por IA | Reconocimiento y propuestas estructuradas. | Respuesta sujeta a validación; puede fallar o requerir corrección.
+Trazabilidad | Movimientos vinculados a importación, ajuste, compra y cocción. | Refleja acciones registradas, no todo consumo físico del hogar.
+Trabajo persistente | La generación conserva identificador y estado consultable. | El navegador no debe interpretar una espera como pérdida inmediata del trabajo.
+Personalización | Porciones, tiempo, preferencias y restricciones. | Su calidad depende de datos correctos del usuario.
+Presentación de recetas | Libros y pasos de preparación consultables. | Leer no implica ejecutar un movimiento de inventario.
+Idiomas | Preferencias de español e inglés. | Debe completarse la cobertura y la consistencia de las traducciones.
+Mantenimiento modular | Módulos de dominio y contratos de datos. | Un cambio transversal requiere pruebas de regresión.
+TABLE 9
+Situación | Respuesta del diseño
+Entrada inválida | Rechazar con información que permita corregirla; no ejecutar una escritura parcial.
+Sesión o permiso inválido | Denegar la operación aunque el usuario conozca el identificador del recurso.
+Proveedor sin respuesta | Persistir el fallo o el estado del trabajo; permitir una recuperación controlada, sin repetir solicitudes a ciegas.
+Stock cambiado entre lectura y cocción | Revalidar dentro de la operación y rechazar si la cantidad actual es insuficiente.
+Reenvío del formulario | Reconocer la clave o el evento previo para impedir el doble efecto.
+Unidad no convertible | Solicitar información o mantener cantidades separadas; no inventar densidad o peso por pieza.
+TABLE 10
+Medición documentada | Resultado y contexto
+Fecha y escenario | 23 de octubre de 2026; hogar exclusivo de pruebas.
+Solicitud | Solo mi despensa; 4 recetas, 2 porciones, máximo 45 minutos, cualquier país.
+Respuesta inicial | 777 ms hasta recibir la respuesta inicial de la acción.
+Resultado observado | 10,463 s desde el clic hasta observar el trabajo terminado.
+Primer libro visible | 10,474 s desde el clic.
+Duración del registro de trabajo | 7,778 s entre creación y finalización; no es únicamente tiempo del proveedor.
+Reutilización | 3 propuestas compatibles existentes o locales y una ampliación mediante IA.
+Uso registrado | 866 tokens de entrada y 791 de salida en la operación con proveedor.
+Conciliación de datos | Sin cambios en lotes, movimientos, eventos de cocción ni recetas guardadas al generar y abrir.
+TABLE 11
+Nivel de comprobación | Qué valida | Herramienta o evidencia
+Tipos y análisis estático | Contratos, referencias y reglas de estilo. | TypeScript, ESLint y compilación.
+Prueba unitaria | Normalización, unidades y reglas aisladas. | Jest, node:test y pruebas del repositorio.
+Integración | Persistencia, restricciones y rollback. | PostgreSQL aislado y servicios reales de prueba.
+Recorrido de navegador | Interacciones, navegación y apertura de recetas. | Playwright y comprobaciones de flujo.
+Producción controlada | Comportamiento puntual con cuenta exclusiva. | Registros de ejecución y conciliación antes y después.
+Revisión visual | Anchos, contenido completo y controles accesibles. | Capturas y navegación en tamaños representativos.
+TABLE 12
+Riesgo | P | I | Nivel | Consecuencia
+R01. Acceso entre hogares | 2 | 5 | 10 (Alto) | Exposición o modificación de datos ajenos.
+R02. Cantidad o unidad mal leída | 4 | 4 | 16 (Crítico) | Existencias y compras incorrectas.
+R03. Receta incompatible | 3 | 5 | 15 (Alto) | Propuesta inadecuada o restricción ignorada.
+R04. Confirmación duplicada | 3 | 4 | 12 (Alto) | Doble ingreso o descuento de inventario.
+R05. Concurrencia de consumo | 3 | 4 | 12 (Alto) | Saldo inconsistente o uso de stock agotado.
+R06. Fallo del proveedor de IA | 3 | 4 | 12 (Alto) | Interrupción o demora de generación.
+R07. Crecimiento del gasto de IA | 4 | 4 | 16 (Crítico) | Costo no sostenible o agotamiento de saldo.
+R08. Pérdida de datos | 2 | 5 | 10 (Alto) | Interrupción y pérdida de trazabilidad.
+R09. Cámara o interfaz móvil | 3 | 3 | 9 (Moderado) | Imposibilidad de capturar o confirmar.
+R10. Traducción incompleta | 3 | 3 | 9 (Moderado) | Confusión en ingredientes y acciones.
+R11. Despliegue defectuoso | 2 | 4 | 8 (Moderado) | Regresión o servicio no disponible.
+TABLE 13
+Riesgo | Control existente | Acción de seguimiento y responsable
+R01 | Sesión, guardas y filtros por hogar. | Ampliar pruebas cruzadas de permisos; desarrollo y seguridad.
+R02 | Revisión de factura y normalización de medidas. | Casos con libras, paquetes y texto borroso; calidad funcional.
+R03 | Restricciones, disponibilidad y validación estructurada. | Evaluar sustituciones, instrucciones y alertas culinarias; responsable funcional.
+R04 | Claves idempotentes, eventos únicos y huella de imagen. | Probar doble clic, reenvío y fotografías distintas; desarrollo.
+R05 | Revalidación y transacciones críticas. | Pruebas simultáneas del último lote; backend.
+R06 | Estado persistente, tiempo límite y registro de errores. | Ensayar indisponibilidad y recuperación sin duplicados; operación.
+R07 | Registro de tokens, reutilización y control de presupuesto. | Definir umbrales y revisar el gasto por hogar y operación; operación.
+R08 | Persistencia administrada y migraciones versionadas. | Verificar la política de copias y ejecutar una restauración controlada; administración.
+R09 | Interfaz adaptable y captura manual alternativa. | Probar Android e iOS reales y permisos de cámara; calidad.
+R10 | Preferencia de idioma e infraestructura de traducción. | Completar cadenas, unidades y errores; frontend y contenido.
+R11 | Construcción, pruebas y recursos de reversión. | Verificar la compatibilidad de migraciones y ensayar el rollback; operación.
+TABLE 14
+Actor | Responsabilidad y restricción
+Usuario | Gestiona alimentos, recetas y planificación dentro de su hogar.
+Propietario o administrador del hogar | Gestiona la configuración y las ubicaciones según los permisos del dominio.
+Propietario de plataforma | Accede a las funciones administrativas globales autorizadas.
+Servicios externos | Autentican, interpretan imágenes o aportan datos de catálogo dentro de la integración.
+TABLE 15
+Elemento | Descripción
+Actor y precondición | Usuario autenticado con hogar activo y fotografía admitida.
+Flujo principal | 1. Seleccionar imagen. 2. Analizar. 3. Mostrar líneas. 4. Revisar y corregir. 5. Confirmar. 6. Registrar lotes y movimientos.
+Alternativas | Imagen repetida: recuperar el análisis. Dato ambiguo: corregir. Fallo del proveedor: informar sin inventario nuevo.
+Postcondición | Ingreso confirmado una sola vez, con trazabilidad a las líneas de factura.
+TABLE 16
+Elemento | Descripción
+Actor y precondición | Usuario con productos registrados y preferencias de búsqueda válidas.
+Flujo principal | 1. Elegir modo y porciones. 2. Solicitar opciones. 3. Crear trabajo. 4. Obtener propuestas. 5. Validar. 6. Mostrar libros y pasos.
+Alternativas | Sin combinación válida: explicar. Proveedor indisponible: estado recuperable. Modo ampliado: mostrar faltantes.
+Postcondición | Propuestas consultables; inventario sin descuento por generar o leer.
+TABLE 17
+Elemento | Descripción
+Actor y precondición | Usuario autorizado, receta o entrada seleccionada, porciones y clave de operación válidas.
+Flujo principal | 1. Confirmar. 2. Revisar la operación previa. 3. Revalidar el stock. 4. Crear el evento. 5. Descontar lotes y registrar el consumo.
+Alternativas | Evento previo: devolver el resultado sin doble descuento. Stock insuficiente o fallo: rechazar y revertir.
+Postcondición | Evento único y movimientos coherentes; o ninguna modificación parcial.
+TABLE 18
+Modelo | Tabla física | Finalidad
+UserProfile | user_profiles | Perfil de aplicación, estado, idioma y rol de plataforma.
+AdminMessage | admin_messages | Mensajes administrativos y estado de envío.
+Household | households | Contexto del hogar, moneda e idioma.
+HouseholdMember | household_members | Membresía, rol y estado de un usuario en el hogar.
+FoodProfile | food_profiles | Porciones, alergias, restricciones y preferencias.
+Ingredient | ingredients | Ingrediente normalizado, categoría y unidad base.
+IngredientAlias | ingredient_aliases | Nombres equivalentes de un ingrediente.
+Product | products | Producto comercial o manual, marca e imagen opcional.
+ProductBarcode | product_barcodes | Código asociado a producto y hogar.
+PantryLocation | pantry_locations | Ubicación de almacenamiento del hogar.
+InventoryLot | inventory_lots | Existencia por alimento, unidad, fechas y costo.
+InventoryMovement | inventory_movements | Cambio de cantidad con tipo, origen y referencia.
+Recipe | recipes | Receta, porciones, instrucciones y procedencia.
+RecipeIngredient | recipe_ingredients | Cantidad y unidad de un ingrediente en una receta.
+MealPlan | meal_plans | Plan de comidas de una semana y hogar.
+MealPlanEntry | meal_plan_entries | Receta asignada a una fecha y tiempo de comida.
+ShoppingList | shopping_lists | Lista semanal de compras del hogar.
+ShoppingListItem | shopping_list_items | Artículo manual o faltante calculado.
+PurchaseEvent | purchase_events | Confirmación idempotente de compra.
+PurchaseEventItem | purchase_event_items | Artículo confirmado y lote de destino.
+CookingEvent | cooking_events | Preparación confirmada de una entrada del plan.
+ConsumptionItem | consumption_items | Cantidad retirada de un lote al cocinar.
+AiGeneration | ai_generations | Trabajo, resultado, estado y uso de IA.
+ReceiptImport | receipt_imports | Cabecera de factura y estado de análisis e importación.
+ReceiptImportItem | receipt_import_items | Línea interpretada y vínculo con alimento y lote.
+TABLE 19
+Restricción | Propósito
+HouseholdMember (householdId, userId) | Una membresía por combinación hogar–usuario.
+PantryLocation (householdId, name) | Evitar ubicaciones duplicadas dentro del hogar.
+MealPlan y ShoppingList (householdId, weekStart) | Un plan y una lista por semana y hogar.
+RecipeIngredient (recipeId, ingredientId) | Una relación por ingrediente de cada receta.
+CookingEvent (mealPlanEntryId) | Una preparación confirmada por entrada.
+Evento (householdId, idempotencyKey) | Evitar repetir una operación con la misma clave.
+ReceiptImport (householdId, imageHash) | Reconocer la misma imagen cuando existe huella.
+TABLE 20
+Patrón o enfoque | Aplicación | Beneficio y consideración
+Arquitectura por capas | Presentación → controladores → servicios → persistencia. | Separa interfaz y reglas. Evitar que las reglas queden duplicadas en componentes visuales.
+Monolito modular | Módulos NestJS por dominio de negocio. | Despliegue coordinado sencillo; exige límites entre módulos para evitar acoplamiento excesivo.
+Frontera BFF | Capa servidor de Next.js adaptada a la interfaz y a la sesión. | Oculta secretos y centraliza el acceso; no debe convertirse en una segunda fuente de reglas de inventario.
+Inyección de dependencias | Servicios y proveedores administrados por NestJS. | Facilita la sustitución de colaboradores en pruebas y la separación de responsabilidades.
+Acceso a datos mediante ORM | Prisma sobre PostgreSQL. | Contratos tipados y migraciones; no elimina la necesidad de conocer consultas, índices y transacciones.
+Adaptadores externos | Integración de IA, identidad y catálogo detrás de servicios. | Acota la dependencia; requiere manejar tiempos límite, errores y cambios del proveedor.
+Trabajo asíncrono persistente | Registro de generación consultable por identificador. | Desacopla la espera del navegador; requiere política de concurrencia y recuperación.
+Transacción e idempotencia | Compras, importación y cocción. | Previene efectos parciales y duplicados; las claves y los límites deben ser consistentes.
+TABLE 21
+Prioridad | Acción recomendada | Criterio de verificación
+Alta | Ampliar las pruebas de permisos entre hogares y cuentas con estados distintos. | Ninguna lectura o escritura de recursos ajenos; errores sin exposición de datos.
+Alta | Completar los casos de factura: libras, paquetes, borrosidad y fotos diferentes de la misma compra. | Revisión clara, unidades correctas y ausencia de ingresos duplicados.
+Alta | Ensayar la cocción concurrente y los reenvíos de confirmación. | Un único efecto por operación y ningún saldo negativo.
+Alta | Definir copias, retención y procedimiento de restauración. | Recuperación ensayada con conciliación de eventos y tiempo registrado.
+Alta | Medir la carga y el costo de IA por escenario. | Latencia p95, errores, cola y gasto bajo los umbrales acordados.
+Media | Completar las traducciones de todas las pantallas y respuestas visibles. | Recorrido íntegro en español e inglés, incluyendo errores, ingredientes y unidades.
+Media | Probar la cámara y los formularios en Android e iOS físicos. | Captura y confirmación sin controles ocultos ni bloqueos de permisos.
+Media | Ampliar la evaluación de sustituciones culinarias y restricciones. | Casos de prueba locales, cantidades compatibles y pasos coherentes.
+Media | Concluir y validar las mejoras de notificaciones antes de publicarlas. | Preferencias y alertas correctas por hogar, sin anunciar capacidades no desplegadas.
+Media | Revisar la continuidad de propiedad de los hogares al eliminar cuentas. | Sin pérdida de acceso de otros integrantes ni eliminación indebida de datos compartidos.
+Continua | Mantener dependencias, contratos, diagramas y manuales sincronizados. | Cada entrega documenta cambios, pruebas y procedimiento de reversión.
+TABLE 22
+Término | Definición
+API | Interfaz que define cómo un componente solicita operaciones o datos a otro.
+Autenticación | Comprobación de la identidad de quien accede al sistema.
+Autorización | Decisión sobre los recursos y las acciones permitidos a una identidad.
+Backend | Parte del sistema que aplica reglas, validaciones y acceso a datos en el servidor.
+BFF | Backend for Frontend: frontera de servidor adaptada a las necesidades de una interfaz.
+Clave foránea (FK) | Campo que referencia una entidad relacionada y sostiene la integridad referencial.
+Clave primaria (PK) | Identificador único de cada registro en una entidad.
+Concurrencia | Ejecución simultánea o superpuesta de operaciones sobre recursos compartidos.
+Contenedor | Unidad de ejecución empaquetada con aplicación y dependencias.
+DTO | Objeto que define y valida los datos de entrada o salida de una operación.
+Frontend | Interfaz y componentes con los que interactúa el usuario.
+Hogar | Unidad del negocio que agrupa integrantes, preferencias, alimentos y operaciones.
+Huella de imagen | Valor calculado a partir de una imagen para reconocer una repetición del mismo archivo.
+Idempotencia | Propiedad por la cual repetir una solicitud identificada no repite su efecto de negocio.
+Inferencia de IA | Obtención de una respuesta de un modelo a partir de instrucciones y datos de entrada.
+JWT | Token firmado que comunica afirmaciones verificables, como identidad y destinatario.
+Latencia | Tiempo transcurrido entre el inicio de una solicitud y un resultado definido.
+Lote | Existencia de un alimento con cantidad, unidad, fechas y posible ubicación.
+Migración | Cambio versionado y reproducible de la estructura de la base de datos.
+Monolito modular | Aplicación backend organizada en módulos que comparten una unidad de despliegue.
+Normalización de nombres | Relación de expresiones equivalentes con un ingrediente reconocido.
+OCR / extracción visual | Interpretación de texto y datos presentes en una imagen, como una factura.
+ORM | Capa que relaciona objetos del código con registros y consultas de una base relacional.
+Percentil 95 (p95) | Valor por debajo del cual se encuentra el 95 % de las observaciones de una medición.
+Rollback | Reversión de los cambios de una transacción que no se confirma.
+Sustitución culinaria | Reemplazo explícito de un ingrediente que requiere revisar cantidades, restricciones y pasos.
+Token de IA | Unidad de procesamiento de texto del modelo utilizada para medir entrada y salida.
+Transacción | Conjunto de operaciones que se confirma de forma íntegra o se revierte.
+Trazabilidad | Capacidad de relacionar un dato o cambio con su origen y con las operaciones que lo produjeron.
+UML | Lenguaje de modelado que representa estructuras y comportamientos de sistemas.
+Validación | Comprobación de estructura, valores y reglas antes de aceptar una operación.
+VPS | Servidor virtual utilizado para ejecutar componentes del servicio.
+TABLE 23
+Necesidad | Soporte técnico | Comprobación recomendada
+Registrar la compra | ReceiptImport, ReceiptImportItem y confirmación de importación. | Revisar cantidades y unidades; comparar lotes antes y después.
+Conocer lo disponible | InventoryLot, ubicaciones, filtros y movimientos. | Comparar cantidades y fechas con los datos esperados.
+Cocinar con lo que hay | AiGeneration, Recipe y validadores de despensa. | Cada ingrediente obligatorio y su cantidad deben estar disponibles.
+Entender la preparación | Libro, ingredientes y pasos de receta. | Abrir y recorrer todos los pasos sin modificar el stock.
+Registrar lo utilizado | CookingEvent, ConsumptionItem e InventoryMovement. | Confirmar una vez y repetir: el segundo intento no descuenta.
+Planificar comidas | MealPlan y MealPlanEntry. | Asignar fecha y porciones; preservar las comidas ya cocinadas.
+Comprar faltantes | ShoppingList, elementos y PurchaseEvent. | Agrupar solo unidades compatibles y confirmar sin duplicados.
+Proteger la información | Sesión, perfil, membresía y validación del recurso. | Intentar el acceso con otro hogar y comprobar la denegación.
+TABLE 24
+Tipo | Entrada | Resultado esperado
+Positiva | Existencia de 500 g; la receta solicita 200 g. | Cocción confirmada; saldo de 300 g y un evento.
+Negativa | Existencia de 500 g; la receta solicita 600 g. | Rechazo por stock insuficiente; saldo de 500 g.
+Límite | Existencia de 500 g; solicitar 500 g y luego repetir la misma operación. | El primer intento deja 0 g; la repetición no genera otro descuento.
+TABLE 25
+Evidencia | Permite concluir | No permite concluir
+Manifiestos y esquema | Tecnologías declaradas y estructura de entidades. | Ausencia de vulnerabilidades o capacidad de producción.
+Pruebas automatizadas | Resultado de los casos incluidos en la suite. | Cobertura de todas las combinaciones del dominio.
+Medición del 23 de octubre | Tiempo y resultado del caso descrito. | Latencia fija para todos los usuarios o proveedores.
+Conciliación de inventario | Ausencia de movimientos en el recorrido medido de lectura. | Que toda ruta posible sea inmutable.
+Verificación visual por anchos | Legibilidad e interacción en esos tamaños. | Compatibilidad total con todos los dispositivos físicos.
+TABLE 26
+Control | Valor
+Documento | Alacena: Entrega de Proyecto Final
+Código y edición | ALA-DOC-002 / 1.0
+Fecha | 24 de octubre de 2026
+Base documental | Código, esquema de datos, especificaciones y registros de verificación.
+Formato | Word editable, con índice y tabla de figuras.

@@ -1,0 +1,168 @@
+{
+  "input": "C:\\Users\\jacob\\Downloads\\Proyecto Final_Seminario.docx",
+  "fonts_by_char_count": {},
+  "direct_run_formatting_runs": 818,
+  "direct_paragraph_formatting_paragraphs": 846,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 1,
+      "text": "UNIVERSIDAD MARIANO G\u00c1LVEZ DE GUATEMALA",
+      "style": "Normal"
+    },
+    {
+      "para_index": 2,
+      "text": "FACULTAD DE INGENIER\u00cdA EN SISTEMAS DE INFORMACI\u00d3N",
+      "style": "Normal"
+    },
+    {
+      "para_index": 5,
+      "text": "ENTREGA DE PROYECTO FINAL",
+      "style": "Normal"
+    },
+    {
+      "para_index": 6,
+      "text": "ISAAC ARIANO ALVAREZ",
+      "style": "Normal"
+    },
+    {
+      "para_index": 7,
+      "text": "GUATEMALA, OCTUBRE DE 2026",
+      "style": "Normal"
+    },
+    {
+      "para_index": 8,
+      "text": "\u00cdndice",
+      "style": "Normal"
+    },
+    {
+      "para_index": 9,
+      "text": "Introducci\u00f3n\t3",
+      "style": "Normal"
+    },
+    {
+      "para_index": 13,
+      "text": "1. Instrumentos Utilizados\t5",
+      "style": "Normal"
+    },
+    {
+      "para_index": 26,
+      "text": "2. Conclusiones\t36",
+      "style": "Normal"
+    },
+    {
+      "para_index": 27,
+      "text": "3. Recomendaciones\t37",
+      "style": "Normal"
+    },
+    {
+      "para_index": 28,
+      "text": "4. Glosario\t38",
+      "style": "Normal"
+    },
+    {
+      "para_index": 29,
+      "text": "5. Bibliograf\u00eda\t40",
+      "style": "Normal"
+    },
+    {
+      "para_index": 30,
+      "text": "6. Anexos\t42",
+      "style": "Normal"
+    },
+    {
+      "para_index": 36,
+      "text": "Alacena: Sistema Web de Gesti\u00f3n de Alimentos del Hogar",
+      "style": "Normal"
+    },
+    {
+      "para_index": 53,
+      "text": "Tabla 1",
+      "style": "Normal"
+    },
+    {
+      "para_index": 57,
+      "text": "Tabla 2",
+      "style": "Normal"
+    },
+    {
+      "para_index": 63,
+      "text": "Tabla 3",
+      "style": "Normal"
+    },
+    {
+      "para_index": 74,
+      "text": "Figura 1",
+      "style": "Normal"
+    },
+    {
+      "para_index": 80,
+      "text": "Tabla 4",
+      "style": "Normal"
+    },
+    {
+      "para_index": 85,
+      "text": "Tabla 5",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 1,
+        "text": "UNIVERSIDAD MARIANO G\u00c1LVEZ DE GUATEMALA",
+        "style": "Normal"
+      },
+      {
+        "para_index": 2,
+        "text": "FACULTAD DE INGENIER\u00cdA EN SISTEMAS DE INFORMACI\u00d3N",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "text": "\"ALACENA: SISTEMA WEB DE GESTI\u00d3N DE ALIMENTOS DEL HOGAR\nCON RECETAS ASISTIDAS POR INTELIGENCIA ARTIFICIAL\"",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "text": "ENTREGA DE PROYECTO FINAL",
+        "style": "Normal"
+      },
+      {
+        "para_index": 6,
+        "text": "ISAAC ARIANO ALVAREZ",
+        "style": "Normal"
+      }
+    ],
+    "direct_run_formatting": [
+      {
+        "para_index": 1,
+        "run_text": "UNIVERSIDAD MARIANO G\u00c1LVEZ DE GUATEMALA",
+        "style": "Normal"
+      },
+      {
+        "para_index": 2,
+        "run_text": "FACULTAD DE INGENIER\u00cdA EN SISTEMAS DE INFORMACI\u00d3N",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "run_text": "\"ALACENA: SISTEMA WEB DE GESTI\u00d3N DE ALIMENTOS DEL HOGAR",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "run_text": "\nCON RECETAS ASISTIDAS POR INTELIGENCIA ARTIFICIAL\"",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "run_text": "ENTREGA DE PROYECTO FINAL",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}
