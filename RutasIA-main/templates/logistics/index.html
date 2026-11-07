@@ -5,7 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Flamia | Rutas y cobros offline</title>
-    <meta name="theme-color" content="#0ea5a4">
+    <meta name="theme-color" content="#0b1220">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Flamia">
@@ -15,55 +15,74 @@
     <link rel="stylesheet" href="{% static 'logistics/style.css' %}">
 </head>
 <body data-user-id="{{ request.user.pk }}">
-    <div class="backdrop"></div>
-    <div class="offline-banner" id="offline-banner">
-        <strong id="offline-state-label">En linea</strong>
-        <span id="offline-state-detail">Sincronizacion al dia.</span>
-        <button type="button" id="btn-sync-now" class="btn-small btn-neutral">Sincronizar</button>
-    </div>
-    <details class="table-card" id="offline-pending-panel">
-        <summary>Operaciones pendientes en este dispositivo</summary>
-        <p>Las operaciones se envian en orden al recuperar conexion. Si hay un error, revisa el primer pendiente. No borres los datos del navegador mientras haya pendientes.</p>
-        <ul id="offline-pending-list"></ul>
-        <button type="button" id="btn-export-legacy" class="btn-small btn-neutral">Descargar pendientes de la version anterior</button>
-    </details>
-    <div class="layout">
-        <header class="hero">
-            <div class="hero-top">
-                <div class="hero-brand">
-                    <img class="brand-logo" src="{% static 'logistics/brand/flamia-logo.svg' %}" alt="Flamia">
-                    <div class="hero-copy">
-                        <p class="chip">Offline-first para reparto local</p>
-                        <h1>Flamia</h1>
-                        <p class="subtitle">Sistema offline de rutas, entregas y cobros para negocios de agua purificada y gas.</p>
-                    </div>
-                </div>
-                <div class="user-info" id="user-info">
-                    <span id="user-badge" class="role-badge"></span>
-                    <span id="user-name"></span>
-                    <form method="post" action="/accounts/logout/" class="logout-form">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-logout">Cerrar sesión</button>
-                    </form>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <img class="brand-logo" src="{% static 'logistics/brand/flamia-logo.svg' %}" alt="">
+                <div class="brand-text">
+                    <strong>FLAMIA</strong>
+                    <span>Rutas · Entregas · Cobros</span>
                 </div>
             </div>
-        </header>
 
-        <nav class="tabs">
-            <button class="tab is-active" data-tab="dashboard">Control diario</button>
-            <button class="tab" data-tab="vehicles">Vehiculos</button>
-            <button class="tab" data-tab="stores">Tiendas</button>
-            <button class="tab" data-tab="products">Productos</button>
-            <button class="tab" data-tab="drivers">Repartidores</button>
-            <button class="tab" data-tab="orders">Entregas</button>
-            <button class="tab" data-tab="payments">Cobros</button>
-            <button class="tab" data-tab="planner">Planificador</button>
-            <button class="tab" data-tab="trips">Rutas</button>
-            <button class="tab" data-tab="reports">Reportes</button>
-            <button class="tab" data-tab="map">Mapa</button>
-            <button class="tab tab-admin" data-tab="departments" id="tab-departments-btn" style="display:none">Zonas</button>
-            <button class="tab tab-admin" data-tab="users" id="tab-users-btn" style="display:none">Usuarios</button>
-        </nav>
+            <nav class="tabs" aria-label="Secciones">
+                <p class="nav-label">Operación</p>
+                <button class="tab is-active" data-tab="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Control diario</span></button>
+                <button class="tab" data-tab="planner"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19h8a3.5 3.5 0 0 0 0-7h-9a3.5 3.5 0 0 1 0-7h8"/></svg><span>Planificador</span></button>
+                <button class="tab" data-tab="trips"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4h11l-2.5 4.5L16 13H5"/></svg><span>Rutas</span></button>
+                <button class="tab" data-tab="map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg><span>Mapa</span></button>
+
+                <p class="nav-label">Comercial</p>
+                <button class="tab" data-tab="orders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg><span>Entregas</span></button>
+                <button class="tab" data-tab="payments"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v.01M18 14v.01"/></svg><span>Cobros</span></button>
+                <button class="tab" data-tab="stores"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 4h15L21 9H3Z"/><path d="M4 9v11h16V9"/><path d="M9.5 20v-6h5v6"/></svg><span>Tiendas</span></button>
+                <button class="tab" data-tab="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/></svg><span>Productos</span></button>
+
+                <p class="nav-label">Recursos</p>
+                <button class="tab" data-tab="vehicles"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 17V6a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v11h2"/><path d="M14 9h4l4 4v4h-2"/><path d="M9 17h6"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/></svg><span>Vehiculos</span></button>
+                <button class="tab" data-tab="drivers"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Repartidores</span></button>
+
+                <p class="nav-label">Sistema</p>
+                <button class="tab" data-tab="reports"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-3"/></svg><span>Reportes</span></button>
+                <button class="tab tab-admin" data-tab="departments" id="tab-departments-btn" style="display:none"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12Z"/><circle cx="12" cy="9" r="2.5"/></svg><span>Zonas</span></button>
+                <button class="tab tab-admin" data-tab="users" id="tab-users-btn" style="display:none"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2 20a7 7 0 0 1 14 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M22 20a7 7 0 0 0-4-6.3"/></svg><span>Usuarios</span></button>
+            </nav>
+
+            <div class="user-info" id="user-info">
+                <div class="user-avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div>
+                <div class="user-meta">
+                    <span id="user-name"></span>
+                    <span id="user-badge" class="role-badge"></span>
+                </div>
+                <form method="post" action="/accounts/logout/" class="logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-logout" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg><span>Cerrar sesión</span></button>
+                </form>
+            </div>
+        </aside>
+
+        <div class="main-col">
+            <header class="topbar">
+                <div class="topbar-title">
+                    <p class="eyebrow">Panel de operaciones</p>
+                    <h1 id="page-title">Control diario</h1>
+                </div>
+                <div class="offline-banner" id="offline-banner">
+                    <i class="status-dot" aria-hidden="true"></i>
+                    <div class="status-text">
+                        <strong id="offline-state-label">En linea</strong>
+                        <span id="offline-state-detail">Sincronizacion al dia.</span>
+                    </div>
+                    <button type="button" id="btn-sync-now" class="btn-small btn-neutral">Sincronizar</button>
+                </div>
+            </header>
+
+            <details class="table-card pending-panel" id="offline-pending-panel">
+                <summary>Operaciones pendientes en este dispositivo</summary>
+                <p>Las operaciones se envian en orden al recuperar conexion. Si hay un error, revisa el primer pendiente. No borres los datos del navegador mientras haya pendientes.</p>
+                <ul id="offline-pending-list"></ul>
+                <button type="button" id="btn-export-legacy" class="btn-small btn-neutral">Descargar pendientes de la version anterior</button>
+            </details>
 
         <main class="content">
 
@@ -809,11 +828,19 @@
             </section>
 
         </main>
+            <footer class="app-footer">Flamia · Sistema de logística offline-first para reparto de agua y gas</footer>
+        </div>
     </div>
 
     <div id="toast" class="toast"></div>
     <script>
         window.ORS_API_KEY = "{{ ors_api_key|escapejs }}";
+        // Muestra en el encabezado el nombre de la seccion activa.
+        document.addEventListener("click", function (event) {
+            var tab = event.target.closest && event.target.closest(".tab");
+            var title = document.getElementById("page-title");
+            if (tab && title) title.textContent = tab.textContent.trim();
+        });
     </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBcoQAzpOO8-BDwaSvM0owPca0_NCdoK3k&libraries=places"></script>
     <script src="{% static 'logistics/offline.js' %}" defer></script>
