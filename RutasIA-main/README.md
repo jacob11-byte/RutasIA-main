@@ -1,5 +1,7 @@
 # Flamia — Sistema Offline de Rutas y Cobros
 
+El documento principal de requisitos es **Entrega de Anteproyecto j.pdf**; la entrega final es apoyo secundario y no amplía su alcance. La referencia de implementación es [Trazabilidad con los documentos del cliente](documentacion/Trazabilidad_requisitos.md), y la operación sin conexión se describe en [Offline y ubicación](documentacion/Offline_y_ubicacion.md). El mapa actual utiliza Google Maps y se conserva con sus claves; las secciones de MapLibre y OpenRouteService de este README describen una implementación anterior.
+
 Sistema web para reparto de agua purificada o gas en Guatemala. Permite registrar tiendas/clientes con GPS, planificar rutas, gestionar entregas, repartidores, vehículos, cobros y visualizar recorridos en un mapa interactivo.
 
 ---

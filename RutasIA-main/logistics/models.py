@@ -239,11 +239,14 @@ class Order(TimestampedModel):
 
     @property
     def paid_amount(self) -> Decimal:
-        total = sum((payment.amount for payment in self.payments.all()), Decimal("0.00"))
+        total = sum((payment.amount for payment in self.payments.all() if payment.payment_type != "credit"), Decimal("0.00"))
+        total += sum((allocation.amount for allocation in self.payment_allocations.all()), Decimal("0.00"))
         return total.quantize(Decimal("0.01"))
 
     @property
     def balance_due(self) -> Decimal:
+        if self.status == self.Status.CANCELED:
+            return Decimal("0.00")
         return max(self.total_amount - self.paid_amount, Decimal("0.00")).quantize(Decimal("0.01"))
 
 
@@ -379,6 +382,9 @@ class Payment(TimestampedModel):
     method = models.CharField(max_length=12, choices=Method.choices, default=Method.CASH)
     sync_status = models.CharField(max_length=12, choices=SyncStatus.choices, default=SyncStatus.SYNCED)
     note = models.CharField(max_length=240, blank=True)
+    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="recorded_payments")
+    driver = models.ForeignKey(Driver, on_delete=models.SET_NULL, null=True, blank=True, related_name="collections")
+    occurred_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ["-created_at"]
@@ -389,7 +395,10 @@ class Payment(TimestampedModel):
 
 class TripEvent(TimestampedModel):
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="events")
+    stop = models.ForeignKey(RouteStop, on_delete=models.SET_NULL, null=True, blank=True, related_name="events")
     note = models.TextField()
+    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="recorded_trip_events")
+    occurred_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ["-created_at"]
@@ -407,3 +416,12 @@ class MutationReceipt(TimestampedModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["user", "key"], name="unique_user_mutation")]
+
+
+class PaymentAllocation(models.Model):
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name="allocations")
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name="payment_allocations")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["payment", "order"], name="unique_payment_allocation")]

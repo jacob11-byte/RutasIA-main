@@ -24,13 +24,11 @@ class TripPlanner:
         pending_only = [o for o in order_list if o.status == Order.Status.PENDING]
         if len(pending_only) != len(order_list):
             raise PlanningError("Todos los pedidos deben estar en estado pendiente.")
+        if TripOrder.objects.filter(order__in=order_list, trip__status__in=[Trip.Status.PLANNED, Trip.Status.IN_PROGRESS]).exists():
+            raise PlanningError("Hay pedidos vinculados a una ruta abierta. Cierra o cancela esa ruta antes de replanificar.")
 
-        first = order_list[0]
-        same_route = True or all(
-            o.origin_id == first.origin_id and o.destination_id == first.destination_id for o in order_list
-        )
-        if not same_route:
-            raise PlanningError("Para esta versión, los pedidos deben compartir mismo origen y destino.")
+        if len({order.origin_id for order in order_list}) != 1:
+            raise PlanningError("Los pedidos de una ruta deben salir de la misma base.")
 
         return order_list
 
@@ -60,7 +58,7 @@ class TripPlanner:
     @staticmethod
     def _build_route(order_list: list[Order], optimizer) -> tuple[list[int], Decimal, list[Order]]:
         ordered_orders = TripPlanner._ordered_stops(order_list, optimizer)
-        current_id = ordered_orders[0].origin_id
+        current_id = order_list[0].origin_id
         route_node_ids: list[int] = []
         total_distance = ZERO
 
@@ -83,10 +81,17 @@ class TripPlanner:
         orders: QuerySet[Order],
         driver: Driver | None = None,
         algorithm: str = "dijkstra",
+        recorded_by=None,
     ) -> Trip:
         if not vehicle.is_active:
             raise PlanningError("El vehículo seleccionado está inactivo.")
 
+        vehicle = Vehicle.objects.select_for_update().get(pk=vehicle.pk)
+        orders = orders.select_for_update(of=("self",))
+        if driver is None:
+            driver = vehicle.driver
+        if driver and not driver.is_active:
+            raise PlanningError("El repartidor seleccionado esta inactivo.")
         order_list = cls._validate_orders(orders)
         total_weight = sum(Decimal(o.weight_kg) for o in order_list)
         if total_weight > Decimal(vehicle.capacity_kg):
@@ -143,6 +148,7 @@ class TripPlanner:
         algo_label = "A* (A-estrella)" if algorithm == "astar" else "Dijkstra"
         TripEvent.objects.create(
             trip=trip,
+            recorded_by=recorded_by,
             note=f"Viaje planificado con {len(order_list)} pedido(s) usando {algo_label}. Ruta: {' -> '.join(route_nodes)}.",
         )
         return trip
@@ -151,50 +157,53 @@ class TripPlanner:
 class TripLifecycleService:
     @staticmethod
     @transaction.atomic
-    def start_trip(trip: Trip) -> Trip:
+    def start_trip(trip: Trip, recorded_by=None) -> Trip:
+        trip = Trip.objects.select_for_update().get(pk=trip.pk)
         if trip.status != Trip.Status.PLANNED:
             raise PlanningError("Solo se puede iniciar un viaje planificado.")
         trip.status = Trip.Status.IN_PROGRESS
         trip.started_at = timezone.now()
         trip.save(update_fields=["status", "started_at", "updated_at"])
-        trip.orders.update(status=Order.Status.IN_TRANSIT)
+        trip.orders.exclude(status__in=[Order.Status.DELIVERED, Order.Status.CANCELED]).update(status=Order.Status.IN_TRANSIT)
         trip.stops.filter(status=RouteStop.Status.PENDING).update(status=RouteStop.Status.PENDING)
-        TripEvent.objects.create(trip=trip, note="Viaje iniciado.")
+        TripEvent.objects.create(trip=trip, recorded_by=recorded_by, note="Viaje iniciado.")
         return trip
 
     @staticmethod
     @transaction.atomic
-    def complete_trip(trip: Trip) -> Trip:
-        if trip.status not in {Trip.Status.IN_PROGRESS, Trip.Status.PLANNED}:
-            raise PlanningError("Solo se puede completar un viaje planificado o en progreso.")
+    def complete_trip(trip: Trip, recorded_by=None) -> Trip:
+        trip = Trip.objects.select_for_update().get(pk=trip.pk)
+        if trip.status != Trip.Status.IN_PROGRESS:
+            raise PlanningError("Inicia la ruta antes de completarla.")
         trip.status = Trip.Status.COMPLETED
         if trip.started_at is None:
             trip.started_at = timezone.now()
         trip.completed_at = timezone.now()
         trip.save(update_fields=["status", "started_at", "completed_at", "updated_at"])
         failed_order_ids = trip.stops.filter(status=RouteStop.Status.NOT_DELIVERED, order_id__isnull=False).values_list("order_id", flat=True)
-        trip.orders.exclude(id__in=failed_order_ids).update(status=Order.Status.DELIVERED)
+        trip.orders.exclude(id__in=failed_order_ids).exclude(status=Order.Status.CANCELED).update(status=Order.Status.DELIVERED)
         trip.stops.filter(status=RouteStop.Status.PENDING).update(
             status=RouteStop.Status.DELIVERED,
             delivered_at=trip.completed_at,
         )
-        TripEvent.objects.create(trip=trip, note="Viaje completado y pedidos marcados como entregados.")
+        TripEvent.objects.create(trip=trip, recorded_by=recorded_by, note="Viaje completado y pedidos marcados como entregados.")
         return trip
 
     @staticmethod
     @transaction.atomic
-    def cancel_trip(trip: Trip) -> Trip:
+    def cancel_trip(trip: Trip, recorded_by=None) -> Trip:
+        trip = Trip.objects.select_for_update().get(pk=trip.pk)
         if trip.status == Trip.Status.COMPLETED:
             raise PlanningError("No se puede cancelar un viaje ya completado.")
         trip.status = Trip.Status.CANCELED
         trip.save(update_fields=["status", "updated_at"])
-        trip.orders.exclude(status=Order.Status.DELIVERED).update(status=Order.Status.PENDING)
+        trip.orders.exclude(status__in=[Order.Status.DELIVERED, Order.Status.CANCELED]).update(status=Order.Status.PENDING)
         trip.stops.exclude(status=RouteStop.Status.DELIVERED).update(status=RouteStop.Status.PENDING)
-        TripEvent.objects.create(trip=trip, note="Viaje cancelado.")
+        TripEvent.objects.create(trip=trip, recorded_by=recorded_by, note="Viaje cancelado.")
         return trip
 
     @staticmethod
-    def add_event(trip: Trip, note: str) -> TripEvent:
+    def add_event(trip: Trip, note: str, recorded_by=None) -> TripEvent:
         if not note.strip():
             raise PlanningError("El evento no puede estar vacío.")
-        return TripEvent.objects.create(trip=trip, note=note.strip())
+        return TripEvent.objects.create(trip=trip, recorded_by=recorded_by, note=note.strip())

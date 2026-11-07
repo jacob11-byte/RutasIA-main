@@ -45,6 +45,8 @@ def _error(message: str, status: int = 400) -> JsonResponse:
 
 
 def _get_role(request: HttpRequest) -> str:
+    if request.user.is_superuser:
+        return UserProfile.Role.ADMIN
     try:
         return request.user.profile.role
     except Exception:
@@ -161,9 +163,11 @@ def _serialize_order(order: Order) -> dict:
         "priority": order.priority,
         "status": order.status,
         "requested_for": order.requested_for.isoformat(),
+        "created_at": order.created_at.isoformat(),
         "items": [_serialize_order_item(item) for item in order.items.all()],
         "total_amount": _as_float(total_amount),
         "paid_amount": _as_float(paid_amount),
+        "payment_status": "paid" if total_amount > 0 and paid_amount >= total_amount else "partial" if paid_amount > 0 else "pending",
         "balance_due": _as_float(max(total_amount - paid_amount, Decimal("0.00"))),
     }
 
@@ -183,6 +187,12 @@ def _serialize_payment(payment: Payment) -> dict:
         "method": payment.method,
         "sync_status": payment.sync_status,
         "note": payment.note,
+        "recorded_by": payment.recorded_by_id,
+        "recorded_by_name": payment.recorded_by.get_full_name() or payment.recorded_by.username if payment.recorded_by else "No registrado (historico)",
+        "driver_id": payment.driver_id,
+        "driver_name": payment.driver.name if payment.driver else None,
+        "occurred_at": timezone.localtime(payment.occurred_at).isoformat(),
+        "allocations": [{"order_id": allocation.order_id, "amount": _as_float(allocation.amount)} for allocation in payment.allocations.all()],
         "created_at": timezone.localtime(payment.created_at).isoformat(),
     }
 
@@ -210,7 +220,10 @@ def _serialize_route_stop(stop: RouteStop) -> dict:
 def _serialize_event(event: TripEvent) -> dict:
     return {
         "id": event.id,
+        "stop_id": event.stop_id,
         "note": event.note,
+        "recorded_by_name": event.recorded_by.get_full_name() or event.recorded_by.username if event.recorded_by else "No registrado (historico)",
+        "occurred_at": timezone.localtime(event.occurred_at).isoformat(),
         "created_at": timezone.localtime(event.created_at).isoformat(),
     }
 
@@ -234,7 +247,7 @@ def _serialize_trip(trip: Trip) -> dict:
         "status": trip.status,
         "started_at": trip.started_at.isoformat() if trip.started_at else None,
         "completed_at": trip.completed_at.isoformat() if trip.completed_at else None,
-        "orders": [_serialize_order(order) for order in trip.orders.all().order_by("-created_at")],
+        "orders": [_serialize_order(order) for order in trip.orders.all()],
         "stops": [_serialize_route_stop(stop) for stop in trip.stops.all()],
         "events": [_serialize_event(event) for event in trip.events.all()],
     }

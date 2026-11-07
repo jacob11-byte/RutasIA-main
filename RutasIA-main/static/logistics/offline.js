@@ -45,6 +45,12 @@
         }
         return copy;
     }
+    function resolveUrl(url, mappings) {
+        return url.replace(/\/orders\/(-\d+)\/action\//, (_, id) => {
+            if (!mappings[id]) throw new Error("Sincroniza primero el pedido del que depende esta accion.");
+            return `/orders/${mappings[id]}/action/`;
+        });
+    }
     const rows = (snapshots, url, key) => snapshots[url]?.[key] || [];
     function apply(snapshots, item, response, mappings = {}) {
         const p = { ...item.payload };
@@ -64,9 +70,9 @@
             const store = rows(snapshots, "/api/stores/", "stores").find(row => row.id === p.store_id);
             const departments = rows(snapshots, "/api/departments/", "departments");
             const products = rows(snapshots, "/api/products/", "products");
-            const items = (p.items || []).map(line => ({ ...line, subtotal: line.quantity * line.unit_price,
+            const items = (p.items || []).map(line => ({ ...line, subtotal: line.quantity * Math.round(line.unit_price * 100) / 100,
                 product_name: products.find(product => product.id === line.product_id)?.name || "" }));
-            const total = items.reduce((sum, line) => sum + line.subtotal, 0);
+            const total = items.reduce((sum, line) => sum + Math.round(line.subtotal * 100), 0) / 100;
             insert(item.url, "orders", response?.order || { ...p, id, code: `PENDIENTE-${Math.abs(id)}`, status: "pending", items,
                 origin_name: departments.find(row => row.id === p.origin_id)?.name || "",
                 destination_name: store?.department_name || departments.find(row => row.id === p.destination_id)?.name || "",
@@ -75,14 +81,36 @@
                 total_amount: total, paid_amount: 0, balance_due: total, requested_for: stamp, offline_pending: true });
         } else if (item.url === "/api/payments/") {
             const order = rows(snapshots, "/api/orders/", "orders").find(row => row.id === p.order_id);
-            const payment = response?.payment || { ...p, id, created_at: stamp, sync_status: "pending",
+            const payment = response?.payment || { ...p, id, created_at: stamp, occurred_at: p.occurred_at || stamp, sync_status: "pending",
+                recorded_by_name: snapshots["/api/me/"]?.user?.full_name || snapshots["/api/me/"]?.user?.username,
+                driver_name: rows(snapshots, "/api/drivers/", "drivers").find(driver => driver.id === p.driver_id)?.name,
                 store_name: rows(snapshots, "/api/stores/", "stores").find(row => row.id === p.store_id)?.name,
                 order_code: order?.code, offline_pending: true };
             const exists = rows(snapshots, item.url, "payments").some(row => row.uuid === p.uuid);
             insert(item.url, "payments", payment);
-            if (order && !exists) {
-                order.paid_amount += Number(p.amount);
-                order.balance_due = Math.max(0, order.total_amount - order.paid_amount);
+            if (!exists && p.payment_type !== "credit") {
+                let remaining = Math.round(Number(p.amount) * 100);
+                const targets = order ? [order] : rows(snapshots, "/api/orders/", "orders")
+                    .filter(row => row.store_id === p.store_id && row.status !== "canceled")
+                    .sort((a, b) => String(a.requested_for || a.created_at).localeCompare(String(b.requested_for || b.created_at)) || a.id - b.id);
+                for (const target of targets) {
+                    const applied = Math.min(remaining, Math.round(target.balance_due * 100));
+                    target.paid_amount = (Math.round(target.paid_amount * 100) + applied) / 100;
+                    target.balance_due = Math.max(0, Math.round(target.total_amount * 100) - Math.round(target.paid_amount * 100)) / 100;
+                    remaining -= applied;
+                    if (remaining <= 0) break;
+                }
+            }
+        } else if (/^\/api\/orders\/-?\d+\/action\/$/.test(item.url)) {
+            const localId = Number(item.url.split("/")[3]);
+            const orderId = mappings[localId] || localId;
+            const order = rows(snapshots, "/api/orders/", "orders").find(row => row.id === orderId);
+            if (order) Object.assign(order, response?.order || { status: "canceled", balance_due: 0 });
+            for (const trip of rows(snapshots, "/api/trips/", "trips")) {
+                for (const value of trip.orders) if (value.id === orderId) Object.assign(value, { status: "canceled", balance_due: 0 });
+                for (const stop of trip.stops) if (stop.order_id === orderId && stop.status !== "delivered") {
+                    Object.assign(stop, { status: "not_delivered", observation: "Pedido cancelado por el responsable de la ruta." });
+                }
             }
         } else {
             const match = item.url.match(/^\/api\/trips\/(\d+)\/(stops\/(\d+)\/|action\/|events\/)$/);
@@ -103,14 +131,19 @@
                     if (order && p.status !== "pending") order.status = p.status === "delivered" ? "delivered" : "pending";
                     const tripOrder = trip.orders.find(row => row.id === stop.order_id);
                     if (tripOrder && order) tripOrder.status = order.status;
+                    const event = response?.event || { id: item.local_id, stop_id: stop.id, occurred_at: p.occurred_at || stamp,
+                        created_at: stamp, note: p.observation || "Resultado de visita registrado sin conexion",
+                        recorded_by_name: snapshots["/api/me/"]?.user?.full_name || snapshots["/api/me/"]?.user?.username, offline_pending: true };
+                    trip.events = trip.events.filter(row => row.id !== item.local_id && row.id !== event.id);
+                    trip.events.unshift(event);
                 }
             } else if (p.action) {
                 trip.status = { start: "in_progress", complete: "completed", cancel: "canceled" }[p.action] || trip.status;
                 for (const value of trip.orders) {
                     const failed = trip.stops.some(stop => stop.order_id === value.id && stop.status === "not_delivered");
-                    if (p.action === "start") value.status = "in_transit";
-                    if (p.action === "complete" && !failed) value.status = "delivered";
-                    if (p.action === "cancel" && value.status !== "delivered") value.status = "pending";
+                    if (p.action === "start" && !["delivered", "canceled"].includes(value.status)) value.status = "in_transit";
+                    if (p.action === "complete" && !failed && value.status !== "canceled") value.status = "delivered";
+                    if (p.action === "cancel" && !["delivered", "canceled"].includes(value.status)) value.status = "pending";
                     const order = rows(snapshots, "/api/orders/", "orders").find(row => row.id === value.id);
                     if (order) order.status = value.status;
                 }
@@ -123,7 +156,7 @@
         }
     }
     window.FlamiaOffline = {
-        owner, uuid, resolvePayload,
+        owner, uuid, resolvePayload, resolveUrl,
         read: () => access(),
         saveSnapshot: (url, data) => access(account => { account.snapshots[url] = data; }),
         async projected(url, fallback) {
@@ -131,10 +164,13 @@
             const snapshots = structuredClone(account.snapshots);
             if (fallback) snapshots[url] = structuredClone(fallback);
             for (const item of account.queue) apply(snapshots, item, null, account.mappings);
+            for (const order of rows(snapshots, "/api/orders/", "orders")) {
+                order.payment_status = order.total_amount > 0 && order.paid_amount >= order.total_amount ? "paid" : order.paid_amount > 0 ? "partial" : "pending";
+            }
             if (url === "/api/balances/" && account.queue.length) {
                 const balances = {};
                 for (const order of rows(snapshots, "/api/orders/", "orders")) {
-                    if (!order.store_id) continue;
+                    if (!order.store_id || order.status === "canceled") continue;
                     const store = rows(snapshots, "/api/stores/", "stores").find(row => row.id === order.store_id);
                     balances[order.store_id] ||= { store_id: order.store_id, store_name: store?.name || order.store_name,
                         municipality: store?.municipality || "", neighborhood: store?.neighborhood || "",
@@ -144,6 +180,7 @@
                     row.paid_total += order.paid_amount;
                     row.balance_due += order.balance_due;
                 }
+                for (const row of Object.values(balances)) for (const field of ["sales_total", "paid_total", "balance_due"]) row[field] = Math.round(row[field] * 100) / 100;
                 snapshots[url] = { ok: true, balances: Object.values(balances).sort((a, b) => b.balance_due - a.balance_due) };
             }
             const data = snapshots[url];
@@ -151,7 +188,8 @@
             return data;
         },
         enqueue: (url, payload, label) => access(account => {
-            const item = { id: uuid(), local_id: --account.sequence, url, payload, label, created_at: new Date().toISOString() };
+            const stamp = new Date().toISOString();
+            const item = { id: uuid(), local_id: --account.sequence, url, payload: { ...payload, occurred_at: payload.occurred_at || stamp }, label, created_at: stamp };
             account.queue.push(item);
             return item;
         }),
@@ -164,7 +202,7 @@
         remove: id => access(account => {
             const item = account.queue.find(row => row.id === id);
             if (!item) return;
-            if (account.queue.some(row => [row.payload.store_id, row.payload.order_id, row.payload.trip_id].includes(item.local_id))) {
+            if (account.queue.some(row => [row.payload.store_id, row.payload.order_id, row.payload.trip_id].includes(item.local_id) || row.url === `/api/orders/${item.local_id}/action/`)) {
                 throw new Error("Este pendiente tiene pedidos o cobros asociados. Revisa esos pendientes primero.");
             }
             account.queue = account.queue.filter(row => row.id !== id);

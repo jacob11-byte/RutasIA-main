@@ -82,7 +82,7 @@ function renderDeliveryTripSelect() {
     if (!select) return;
     const previous = select.value;
     select.innerHTML = '<option value="">Selecciona una ruta</option>' + state.trips
-        .filter(trip => ["planned", "in_progress"].includes(trip.status))
+        .filter(trip => trip.status === "in_progress")
         .map(trip => `<option value="${trip.id}">${escapeHtml(trip.code)}</option>`).join("");
     select.value = previous;
     renderDeliveryStops();

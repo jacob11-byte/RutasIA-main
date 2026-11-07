@@ -179,7 +179,7 @@ function initPwa() {
             // The first navigation happened before the worker controlled this page.
             const shell = await fetch("/", { credentials: "same-origin", cache: "no-store" });
             if (shell.ok && shell.headers.get("X-Flamia-User-ID") === FlamiaOffline.owner) {
-                const cache = await caches.open("flamia-shell-v3");
+                const cache = await caches.open("flamia-shell-v4");
                 await cache.put("/", shell);
             }
         }).catch((error) => {
@@ -385,6 +385,7 @@ function renderAll() {
     renderTripFilterVehicles();
     if (window.google?.maps) renderMap();
     renderUsers();
+    renderBusinessDetails();
 }
 
 function renderUserInfo() {
@@ -405,7 +406,7 @@ function renderUserInfo() {
     document.getElementById("store-form-card").style.display = isSupervisor ? "" : "none";
     document.getElementById("product-form-card").style.display = isSupervisor ? "" : "none";
     document.getElementById("driver-form-card").style.display = isSupervisor ? "" : "none";
-    document.getElementById("order-form-card").style.display = isSupervisor ? "" : "none";
+    document.getElementById("order-form-card").style.display = "";
     document.getElementById("department-form-card").style.display = isSupervisor ? "" : "none";
 }
 
@@ -475,7 +476,7 @@ function renderDepartmentsInSelects() {
 function renderStoreSelects() {
     const activeStores = state.stores.filter((store) => store.is_active);
     const options = [
-        `<option value="">Sin tienda registrada</option>`,
+        `<option value="">Seleccione cliente...</option>`,
         ...activeStores.map((store) => {
             const place = [store.municipality, store.neighborhood].filter(Boolean).join(" / ");
             const label = `${store.name} - ${place || store.department_name}`;
@@ -655,7 +656,7 @@ function renderOrdersFiltered() {
     const body = document.getElementById("orders-body");
     body.innerHTML = "";
     if (!filtered.length) {
-        body.innerHTML = `<tr><td colspan="8">No hay entregas con estos filtros.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="9">No hay entregas con estos filtros.</td></tr>`;
         return;
     }
     filtered.forEach((o) => {
@@ -668,9 +669,10 @@ function renderOrdersFiltered() {
                 <td>${escapeHtml(o.store_name || o.destination_name)}</td>
                 <td>${o.weight_kg.toFixed(2)} kg</td>
                 <td>${escapeHtml(products)}</td>
-                <td>Q ${Number(o.balance_due || 0).toFixed(2)}</td>
+                <td>Q ${Number(o.balance_due || 0).toFixed(2)}<br><small>${paymentStatusLabel(o)}</small></td>
                 <td>${priorityLabel(o.priority)}</td>
                 <td>${statusChip(o.status)}</td>
+                <td>${state.currentUser?.role !== "operator" && ["pending", "assigned"].includes(o.status) && !o.paid_amount ? `<button type="button" data-cancel-order="${o.id}">Cancelar pedido</button>` : "-"}</td>
             </tr>`
         );
     });
@@ -1620,6 +1622,7 @@ async function onPaymentSubmit(event) {
         method: form.method.value,
         note: form.note.value.trim(),
         sync_status: navigator.onLine ? "synced" : "pending",
+        driver_id: form.driver_id.value ? Number(form.driver_id.value) : null,
         uuid: makeLocalId()
     };
     try {
@@ -1672,7 +1675,8 @@ async function onPlannerSubmit(event) {
         const response = await postJson(API.planTrip, {
             vehicle_id: vehicleId,
             driver_id: driverId,
-            order_ids: selectedOrders
+            order_ids: selectedOrders,
+            algorithm: form.algorithm.value
         });
         showPlannerResult(response.trip);
         showToast("Ruta planificada correctamente.");
@@ -1794,7 +1798,6 @@ function buildTripActions(trip) {
     if (trip.status === "planned") {
         return `
             <button class="btn-inline" data-action="start" data-trip-id="${trip.id}">Iniciar</button>
-            <button class="btn-inline btn-neutral" data-action="complete" data-trip-id="${trip.id}">Completar</button>
             ${simButton}
             <button class="btn-inline btn-danger" data-action="cancel" data-trip-id="${trip.id}">Cancelar</button>
         `;
@@ -1905,7 +1908,7 @@ async function flushOfflineQueue() {
                 if (!item) break;
                 try {
                     const payload = FlamiaOffline.resolvePayload(item.payload, account.mappings);
-                    const response = await postJson(item.url, payload, item.id);
+                    const response = await postJson(FlamiaOffline.resolveUrl(item.url, account.mappings), payload, item.id);
                     await FlamiaOffline.acknowledge(item, response);
                     responses[item.id] = response;
                 } catch (error) {

@@ -37,7 +37,7 @@ class Command(BaseCommand):
         fuel.regular_gtq_gal = prices.regular
         fuel.super_gtq_gal = prices.super_
         fuel.diesel_gtq_gal = prices.diesel
-        fuel.source = f"MEM Guatemala (auto-sync)"
+        fuel.source = "MEM Guatemala (auto-sync)" if "mem.gob.gt" in prices.source_url else "GlobalPetrolPrices; super estimada (+8%)"
         fuel.save()
 
         self.stdout.write(self.style.SUCCESS("Precios actualizados correctamente."))

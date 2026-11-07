@@ -14,8 +14,14 @@ def idempotent(view):
     @wraps(view)
     def wrapped(request, *args, **kwargs):
         key = request.headers.get("Idempotency-Key")
-        if request.method != "POST" or not key:
+        if request.method != "POST":
             return view(request, *args, **kwargs)
+        if not key:
+            with transaction.atomic():
+                response = view(request, *args, **kwargs)
+                if response.status_code >= 400:
+                    transaction.set_rollback(True)
+                return response
         try:
             key = uuid.UUID(key)
         except (ValueError, TypeError):

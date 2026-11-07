@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.db import transaction
 from django.db.models import Sum
 from django.http import HttpRequest, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, render
@@ -25,10 +27,14 @@ from logistics.models import (
     RouteStop,
     Store,
     Trip,
+    TripEvent,
     UserProfile,
     Vehicle,
 )
 from logistics.presentation.idempotency import idempotent
+from logistics.presentation.permissions import role_policy
+from logistics.presentation.validation import decimal_field, required_text
+from logistics.application.collections import record_collection, operation_time
 from logistics.presentation.location import parse_location
 from logistics.domain.exceptions import PlanningError
 from logistics.application.services import TripLifecycleService, TripPlanner
@@ -83,6 +89,8 @@ def api_me(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@role_policy
+@idempotent
 def api_users(request: HttpRequest):
     perm_error = _require_role(request, UserProfile.Role.ADMIN)
     if perm_error:
@@ -97,6 +105,8 @@ def api_users(request: HttpRequest):
                 role = u.profile.role
             except Exception:
                 pass
+            if u.is_superuser:
+                role = UserProfile.Role.ADMIN
             result.append({
                 "id": u.id,
                 "username": u.username,
@@ -109,7 +119,7 @@ def api_users(request: HttpRequest):
 
     try:
         payload = _parse_json(request)
-        username = str(payload["username"]).strip()
+        username = required_text(payload["username"], "Usuario")
         password = str(payload["password"])
         role = payload.get("role", UserProfile.Role.OPERATOR)
         first_name = str(payload.get("first_name", "")).strip()
@@ -121,6 +131,7 @@ def api_users(request: HttpRequest):
         if role not in [r[0] for r in UserProfile.Role.choices]:
             return _error("Rol inválido.")
 
+        validate_password(password, User(username=username, first_name=first_name, last_name=last_name, email=email))
         user = User.objects.create_user(
             username=username,
             password=password,
@@ -146,6 +157,30 @@ def api_users(request: HttpRequest):
 
 
 @login_required
+@require_http_methods(["POST"])
+@role_policy
+@idempotent
+def api_user_detail(request: HttpRequest, user_id: int):
+    try:
+        payload = _parse_json(request)
+        user = get_object_or_404(User.objects.select_for_update(), pk=user_id)
+        role = payload.get("role")
+        active = payload.get("is_active", user.is_active)
+        if role not in UserProfile.Role.values or not isinstance(active, bool):
+            return _error("Rol o estado de usuario invalido.")
+        if request.user.pk == user.pk and (role != UserProfile.Role.ADMIN or not active):
+            return _error("No puedes retirar tu propio acceso administrativo.")
+        if user.is_superuser and (role != UserProfile.Role.ADMIN or not active):
+            return _error("La cuenta superadministradora debe conservar su acceso.")
+        UserProfile.objects.update_or_create(user=user, defaults={"role": role})
+        user.is_active = active
+        user.save(update_fields=["is_active"])
+        return _ok({"user": {"id": user.pk, "username": user.username, "role": role, "is_active": active}})
+    except (KeyError, PlanningError) as exc:
+        return _error(str(exc))
+
+
+@login_required
 @require_GET
 def api_dashboard(request: HttpRequest):
     date_from = request.GET.get("date_from")
@@ -155,6 +190,8 @@ def api_dashboard(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@role_policy
+@idempotent
 def api_departments(request: HttpRequest):
     if request.method == "GET":
         departments = Department.objects.all()
@@ -212,6 +249,7 @@ def api_connections(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@role_policy
 @idempotent
 def api_stores(request: HttpRequest):
     if request.method == "GET":
@@ -231,7 +269,7 @@ def api_stores(request: HttpRequest):
 
         latitude, longitude, accuracy, captured = parse_location(payload, required=True)
         store = Store.objects.create(
-            name=str(payload["name"]).strip(),
+            name=required_text(payload["name"], "Nombre"),
             contact_name=str(payload.get("contact_name", "")).strip(),
             phone=str(payload.get("phone", "")).strip(),
             municipality=str(payload.get("municipality", "")).strip(),
@@ -257,6 +295,8 @@ def api_stores(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@role_policy
+@idempotent
 def api_products(request: HttpRequest):
     if request.method == "GET":
         products = Product.objects.all()
@@ -275,11 +315,11 @@ def api_products(request: HttpRequest):
         if product_type not in [choice[0] for choice in Product.Type.choices]:
             return _error("Tipo de producto invalido.")
         product = Product.objects.create(
-            name=str(payload["name"]).strip(),
+            name=required_text(payload["name"], "Nombre"),
             product_type=product_type,
             presentation=str(payload.get("presentation", "")).strip(),
-            unit_price=Decimal(str(payload["unit_price"])),
-            unit_weight_kg=Decimal(str(payload.get("unit_weight_kg", "1.00"))),
+            unit_price=decimal_field(payload["unit_price"], "Precio"),
+            unit_weight_kg=decimal_field(payload.get("unit_weight_kg", "1.00"), "Peso"),
             is_active=bool(payload.get("is_active", True)),
         )
         return _ok({"product": _serialize_product(product)}, status=201)
@@ -291,6 +331,8 @@ def api_products(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@role_policy
+@idempotent
 def api_drivers(request: HttpRequest):
     if request.method == "GET":
         drivers = Driver.objects.all()
@@ -303,9 +345,9 @@ def api_drivers(request: HttpRequest):
     try:
         payload = _parse_json(request)
         driver = Driver.objects.create(
-            name=str(payload["name"]).strip(),
+            name=required_text(payload["name"], "Nombre"),
             phone=str(payload.get("phone", "")).strip(),
-            license_number=str(payload["license_number"]).strip(),
+            license_number=required_text(payload["license_number"], "Licencia"),
             is_active=bool(payload.get("is_active", True)),
         )
         return _ok({"driver": _serialize_driver(driver)}, status=201)
@@ -317,6 +359,8 @@ def api_drivers(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@role_policy
+@idempotent
 def api_vehicles(request: HttpRequest):
     if request.method == "GET":
         vehicles = Vehicle.objects.select_related("current_department", "driver").all()
@@ -339,11 +383,11 @@ def api_vehicles(request: HttpRequest):
             driver = Driver.objects.get(pk=driver_id)
 
         vehicle = Vehicle.objects.create(
-            plate=str(payload["plate"]).strip().upper(),
-            model=str(payload["model"]).strip(),
-            capacity_kg=Decimal(str(payload["capacity_kg"])),
-            fuel_efficiency_km_l=Decimal(str(payload["fuel_efficiency_km_l"])),
-            cost_per_km=Decimal(str(payload["cost_per_km"])),
+            plate=required_text(payload["plate"], "Placa").upper(),
+            model=required_text(payload["model"], "Modelo"),
+            capacity_kg=decimal_field(payload["capacity_kg"], "Capacidad"),
+            fuel_efficiency_km_l=decimal_field(payload["fuel_efficiency_km_l"], "Rendimiento"),
+            cost_per_km=decimal_field(payload["cost_per_km"], "Costo por kilometro", allow_zero=True),
             is_active=bool(payload.get("is_active", True)),
             current_department=current_department,
             driver=driver,
@@ -361,12 +405,13 @@ def api_vehicles(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@role_policy
 @idempotent
 def api_orders(request: HttpRequest):
     if request.method == "GET":
         orders = (
             Order.objects.select_related("origin", "destination", "store")
-            .prefetch_related("items__product", "payments")
+            .prefetch_related("items__product", "payments", "payment_allocations")
             .all()
         )
         status_filter = request.GET.get("status")
@@ -380,7 +425,7 @@ def api_orders(request: HttpRequest):
             orders = orders.filter(destination_id=destination_filter)
         return _ok({"orders": [_serialize_order(o) for o in orders]})
 
-    perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR)
+    perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR, UserProfile.Role.OPERATOR)
     if perm_error:
         return perm_error
 
@@ -389,6 +434,8 @@ def api_orders(request: HttpRequest):
         origin = Department.objects.get(pk=payload["origin_id"])
         store = None
         store_id = payload.get("store_id")
+        if not store_id:
+            return _error("Selecciona el cliente del pedido de agua o gas.")
         if store_id:
             store = Store.objects.select_related("department").get(pk=store_id, is_active=True)
             destination = store.department
@@ -398,6 +445,10 @@ def api_orders(request: HttpRequest):
             return _error("Origen y destino no pueden ser iguales.")
 
         items_payload = payload.get("items") or []
+        if not isinstance(items_payload, list) or not items_payload:
+            return _error("El pedido debe incluir al menos un producto de agua o gas.")
+        if payload.get("priority", Order.Priority.NORMAL) not in Order.Priority.values:
+            return _error("Prioridad invalida.")
         order = Order.objects.create(
             origin=origin,
             destination=destination,
@@ -405,6 +456,7 @@ def api_orders(request: HttpRequest):
             weight_kg=Decimal(str(payload.get("weight_kg", "1.00"))),
             package_count=int(payload.get("package_count", 1)),
             priority=payload.get("priority", Order.Priority.NORMAL),
+            requested_for=operation_time(payload.get("occurred_at")),
             status=Order.Status.PENDING,
         )
         if items_payload:
@@ -414,6 +466,10 @@ def api_orders(request: HttpRequest):
                 product = Product.objects.get(pk=item_payload["product_id"], is_active=True)
                 quantity = int(item_payload.get("quantity", 1))
                 unit_price = Decimal(str(item_payload.get("unit_price", product.unit_price)))
+                if quantity <= 0 or str(quantity) != str(item_payload.get("quantity", 1)):
+                    return _error("La cantidad debe ser un entero positivo.")
+                if not unit_price.is_finite() or unit_price <= 0 or unit_price != unit_price.quantize(Decimal("0.01")):
+                    return _error("El precio debe ser positivo y tener hasta dos decimales.")
                 OrderItem.objects.create(
                     order=order,
                     product=product,
@@ -439,11 +495,43 @@ def api_orders(request: HttpRequest):
 
 
 @login_required
+@require_http_methods(["POST"])
+@role_policy
+@idempotent
+def api_order_action(request: HttpRequest, order_id: int):
+    order = get_object_or_404(Order, pk=order_id)
+    if order.store_id:
+        Store.objects.select_for_update().get(pk=order.store_id)
+    order = Order.objects.select_for_update().get(pk=order.pk)
+    try:
+        payload = _parse_json(request)
+        if payload.get("action") != "cancel":
+            return _error("Accion de pedido invalida.")
+        if order.status not in {Order.Status.PENDING, Order.Status.ASSIGNED}:
+            return _error("Solo se pueden cancelar pedidos pendientes o asignados.")
+        if order.paid_amount > 0:
+            return _error("El pedido tiene cobros registrados. Revisa esos cobros antes de cancelar; no se generan devoluciones automaticas.")
+        order.status = Order.Status.CANCELED
+        order.save(update_fields=["status", "updated_at"])
+        for stop in order.route_stops.filter(trip__status__in=[Trip.Status.PLANNED, Trip.Status.IN_PROGRESS]):
+            if stop.status == RouteStop.Status.DELIVERED:
+                raise PlanningError("La entrega ya fue confirmada.")
+            stop.status = RouteStop.Status.NOT_DELIVERED
+            stop.observation = "Pedido cancelado por el responsable de la ruta."
+            stop.save(update_fields=["status", "observation", "updated_at"])
+            TripEvent.objects.create(trip=stop.trip, stop=stop, recorded_by=request.user,
+                                     occurred_at=operation_time(payload.get("occurred_at")), note=f"Pedido {order.code} cancelado.")
+        return _ok({"order": _serialize_order(order)})
+    except PlanningError as exc:
+        return _error(str(exc))
+
+
+@login_required
 @require_http_methods(["GET"])
 def api_trips(request: HttpRequest):
     trips = (
         Trip.objects.select_related("vehicle", "driver", "origin", "destination")
-        .prefetch_related("orders__origin", "orders__destination", "orders__store", "orders__items__product", "orders__payments", "stops__order", "stops__store", "events")
+        .prefetch_related("orders__origin", "orders__destination", "orders__store", "orders__items__product", "orders__payments", "orders__payment_allocations", "stops__order", "stops__store", "events")
         .all()
     )
     status_filter = request.GET.get("status")
@@ -463,6 +551,8 @@ def api_trips(request: HttpRequest):
 
 @login_required
 @require_http_methods(["POST"])
+@role_policy
+@idempotent
 def api_plan_trip(request: HttpRequest):
     perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR)
     if perm_error:
@@ -491,10 +581,10 @@ def api_plan_trip(request: HttpRequest):
         if algorithm not in ("dijkstra", "astar"):
             return _error("Algoritmo inválido. Use 'dijkstra' o 'astar'.")
 
-        trip = TripPlanner.plan_trip(vehicle=vehicle, orders=orders, driver=driver, algorithm=algorithm)
+        trip = TripPlanner.plan_trip(vehicle=vehicle, orders=orders, driver=driver, algorithm=algorithm, recorded_by=request.user)
         trip = (
             Trip.objects.select_related("vehicle", "driver", "origin", "destination")
-            .prefetch_related("orders__origin", "orders__destination", "orders__store", "orders__items__product", "orders__payments", "stops__order", "stops__store", "events")
+            .prefetch_related("orders__origin", "orders__destination", "orders__store", "orders__items__product", "orders__payments", "orders__payment_allocations", "stops__order", "stops__store", "events")
             .get(pk=trip.pk)
         )
         return _ok({"trip": _serialize_trip(trip)}, status=201)
@@ -510,11 +600,12 @@ def api_plan_trip(request: HttpRequest):
 
 @login_required
 @require_http_methods(["POST"])
+@role_policy
 @idempotent
 def api_trip_action(request: HttpRequest, trip_id: int):
     trip = get_object_or_404(
         Trip.objects.select_related("vehicle", "driver", "origin", "destination").prefetch_related(
-            "orders__origin", "orders__destination", "orders__store", "orders__items__product", "orders__payments", "stops__order", "stops__store", "events"
+            "orders__origin", "orders__destination", "orders__store", "orders__items__product", "orders__payments", "orders__payment_allocations", "stops__order", "stops__store", "events"
         ),
         pk=trip_id,
     )
@@ -526,18 +617,18 @@ def api_trip_action(request: HttpRequest, trip_id: int):
         payload = _parse_json(request)
         action = payload.get("action")
         if action == "start":
-            TripLifecycleService.start_trip(trip)
+            TripLifecycleService.start_trip(trip, recorded_by=request.user)
         elif action == "complete":
-            TripLifecycleService.complete_trip(trip)
+            TripLifecycleService.complete_trip(trip, recorded_by=request.user)
         elif action == "cancel":
-            TripLifecycleService.cancel_trip(trip)
+            TripLifecycleService.cancel_trip(trip, recorded_by=request.user)
         else:
             return _error("Acción inválida. Usa: start, complete o cancel.")
 
         trip.refresh_from_db()
         trip = (
             Trip.objects.select_related("vehicle", "driver", "origin", "destination")
-            .prefetch_related("orders__origin", "orders__destination", "orders__store", "orders__items__product", "orders__payments", "stops__order", "stops__store", "events")
+            .prefetch_related("orders__origin", "orders__destination", "orders__store", "orders__items__product", "orders__payments", "orders__payment_allocations", "stops__order", "stops__store", "events")
             .get(pk=trip.pk)
         )
         return _ok({"trip": _serialize_trip(trip)})
@@ -547,6 +638,7 @@ def api_trip_action(request: HttpRequest, trip_id: int):
 
 @login_required
 @require_http_methods(["POST"])
+@role_policy
 @idempotent
 def api_trip_event(request: HttpRequest, trip_id: int):
     trip = get_object_or_404(Trip, pk=trip_id)
@@ -554,6 +646,9 @@ def api_trip_event(request: HttpRequest, trip_id: int):
         payload = _parse_json(request)
         note = str(payload.get("note", ""))
         event = TripLifecycleService.add_event(trip, note)
+        event.recorded_by = request.user
+        event.occurred_at = operation_time(payload.get("occurred_at"))
+        event.save(update_fields=["recorded_by", "occurred_at"])
         return _ok({"event": _serialize_event(event)}, status=201)
     except PlanningError as exc:
         return _error(str(exc))
@@ -561,22 +656,27 @@ def api_trip_event(request: HttpRequest, trip_id: int):
 
 @login_required
 @require_http_methods(["POST"])
+@role_policy
 @idempotent
 def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
+    get_object_or_404(Trip.objects.select_for_update(), pk=trip_id)
     stop = get_object_or_404(RouteStop.objects.select_related("trip", "order", "store"), pk=stop_id, trip_id=trip_id)
     try:
         payload = _parse_json(request)
         status = payload.get("status", RouteStop.Status.DELIVERED)
         if status not in [choice[0] for choice in RouteStop.Status.choices]:
             return _error("Estado de parada invalido.")
-        if stop.trip.status not in {Trip.Status.PLANNED, Trip.Status.IN_PROGRESS}:
-            return _error("Esta ruta ya esta cerrada; no se pueden modificar sus entregas.")
+        if stop.trip.status != Trip.Status.IN_PROGRESS:
+            return _error("Solo se registran resultados de entrega en una ruta en progreso. Inicia la ruta antes de registrar la visita.")
         location = parse_location(payload, prefix="delivery_")
         if location:
             stop.delivery_latitude, stop.delivery_longitude, stop.delivery_accuracy_m, stop.delivery_captured_at = location
+        if stop.status == RouteStop.Status.DELIVERED and status != stop.status:
+            return _error("Una entrega confirmada no puede reabrirse automaticamente.")
+        previous_status = stop.status
         stop.status = status
         stop.observation = str(payload.get("observation", stop.observation)).strip()
-        stop.delivered_at = timezone.now() if status == RouteStop.Status.DELIVERED else None
+        stop.delivered_at = (stop.delivered_at or operation_time(payload.get("occurred_at"))) if status == RouteStop.Status.DELIVERED else None
         stop.save(update_fields=["status", "observation", "delivered_at", "updated_at",
                                  "delivery_latitude", "delivery_longitude", "delivery_accuracy_m", "delivery_captured_at"])
         if stop.order:
@@ -585,7 +685,10 @@ def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
             elif status == RouteStop.Status.NOT_DELIVERED:
                 stop.order.status = Order.Status.PENDING
             stop.order.save(update_fields=["status", "updated_at"])
-        return _ok({"stop": _serialize_route_stop(stop)})
+        event = TripEvent.objects.create(trip=stop.trip, stop=stop, recorded_by=request.user,
+                                        occurred_at=operation_time(payload.get("occurred_at")),
+                                        note=f"Parada {stop.sequence}: {previous_status} -> {status}. {stop.observation}")
+        return _ok({"stop": _serialize_route_stop(stop), "event": _serialize_event(event)})
     except PlanningError as exc:
         return _error(str(exc))
     except Exception as exc:
@@ -594,68 +697,28 @@ def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@role_policy
 @idempotent
 def api_payments(request: HttpRequest):
     if request.method == "GET":
-        payments = Payment.objects.select_related("store", "order", "trip").all()
+        payments = Payment.objects.select_related("store", "order", "trip", "driver", "recorded_by").prefetch_related("allocations").all()
         store_id = request.GET.get("store_id")
         if store_id:
             payments = payments.filter(store_id=store_id)
         return _ok({"payments": [_serialize_payment(payment) for payment in payments]})
 
     try:
-        payload = _parse_json(request)
-        store = Store.objects.get(pk=payload["store_id"], is_active=True)
-        order = None
-        order_id = payload.get("order_id")
-        if order_id:
-            order = Order.objects.get(pk=order_id, store=store)
-        trip = None
-        trip_id = payload.get("trip_id")
-        if trip_id:
-            trip = Trip.objects.get(pk=trip_id)
-        payment_uuid = payload.get("uuid")
-        if payment_uuid:
-            existing = Payment.objects.filter(uuid=payment_uuid).select_related("store", "order", "trip").first()
-            if existing:
-                return _ok({"payment": _serialize_payment(existing), "duplicate": True})
-        amount = Decimal(str(payload["amount"]))
-        if not amount.is_finite() or amount < 0:
-            return _error("El monto debe ser un numero mayor o igual a cero.")
-        if payload.get("payment_type", Payment.PaymentType.PARTIAL) not in Payment.PaymentType.values:
-            return _error("Tipo de pago invalido.")
-        if payload.get("method", Payment.Method.CASH) not in Payment.Method.values:
-            return _error("Metodo de pago invalido.")
-        payment_data = {
-            "store": store,
-            "order": order,
-            "trip": trip,
-            "amount": amount,
-            "payment_type": payload.get("payment_type", Payment.PaymentType.PARTIAL),
-            "method": payload.get("method", Payment.Method.CASH),
-            "sync_status": Payment.SyncStatus.SYNCED,
-            "note": str(payload.get("note", "")).strip(),
-        }
-        if payment_uuid:
-            payment_data["uuid"] = payment_uuid
-        payment = Payment.objects.create(**payment_data)
-        return _ok({"payment": _serialize_payment(payment)}, status=201)
-    except KeyError as exc:
-        return _error(f"Falta el campo requerido: {exc.args[0]}")
-    except Store.DoesNotExist:
-        return _error("Tienda/cliente invalido.")
-    except Order.DoesNotExist:
-        return _error("Pedido invalido para esta tienda.")
-    except Trip.DoesNotExist:
-        return _error("Ruta invalida.")
-    except Exception as exc:
+        payment, duplicate = record_collection(_parse_json(request), request.user)
+        return _ok({"payment": _serialize_payment(payment), "duplicate": duplicate}, status=200 if duplicate else 201)
+    except (PlanningError, KeyError) as exc:
         return _error(str(exc))
+
 
 
 @login_required
 @require_http_methods(["GET"])
 def api_balances(request: HttpRequest):
-    orders = Order.objects.select_related("store").prefetch_related("items", "payments").filter(store__isnull=False)
+    orders = Order.objects.select_related("store").prefetch_related("items", "payments", "payment_allocations").filter(store__isnull=False).exclude(status=Order.Status.CANCELED)
     balances: dict[int, dict] = {}
     for order in orders:
         store = order.store
@@ -673,8 +736,13 @@ def api_balances(request: HttpRequest):
         balances[store.id]["paid_total"] += order.paid_amount
         balances[store.id]["balance_due"] += order.balance_due
 
+    legacy = Payment.objects.filter(order__isnull=True, allocations__isnull=True).exclude(payment_type=Payment.PaymentType.CREDIT)
+    for payment in legacy:
+        if payment.store_id in balances:
+            balances[payment.store_id]["paid_total"] += payment.amount
     payload = []
     for row in balances.values():
+        row["balance_due"] = max(row["sales_total"] - row["paid_total"], Decimal("0.00"))
         payload.append({
             **row,
             "sales_total": _as_float(row["sales_total"]),
@@ -690,27 +758,27 @@ def api_balances(request: HttpRequest):
 def api_reports(request: HttpRequest):
     date_from = request.GET.get("date_from")
     date_to = request.GET.get("date_to")
-    orders = Order.objects.prefetch_related("items", "payments")
+    orders = Order.objects.prefetch_related("items", "payments", "payment_allocations").exclude(status=Order.Status.CANCELED)
     trips = Trip.objects.all()
     payments = Payment.objects.all()
     if date_from:
-        orders = orders.filter(created_at__date__gte=date_from)
+        orders = orders.filter(requested_for__date__gte=date_from)
         trips = trips.filter(created_at__date__gte=date_from)
-        payments = payments.filter(created_at__date__gte=date_from)
+        payments = payments.filter(occurred_at__date__gte=date_from)
     if date_to:
-        orders = orders.filter(created_at__date__lte=date_to)
+        orders = orders.filter(requested_for__date__lte=date_to)
         trips = trips.filter(created_at__date__lte=date_to)
-        payments = payments.filter(created_at__date__lte=date_to)
+        payments = payments.filter(occurred_at__date__lte=date_to)
 
     sales_total = sum((order.total_amount for order in orders), Decimal("0.00"))
-    paid_total = payments.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    paid_total = payments.exclude(payment_type=Payment.PaymentType.CREDIT).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
     delivered_orders = orders.filter(status=Order.Status.DELIVERED).count()
     pending_orders = orders.filter(status=Order.Status.PENDING).count()
     return _ok({
         "report": {
             "sales_total": _as_float(sales_total),
             "paid_total": _as_float(paid_total),
-            "balance_due": _as_float(max(sales_total - paid_total, Decimal("0.00"))),
+            "balance_due": _as_float(sum((order.balance_due for order in orders), Decimal("0.00"))),
             "orders": orders.count(),
             "delivered_orders": delivered_orders,
             "pending_orders": pending_orders,
@@ -723,6 +791,8 @@ def api_reports(request: HttpRequest):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@role_policy
+@idempotent
 def api_fuel_price(request: HttpRequest):
     fp = FuelPrice.current()
 
@@ -743,9 +813,9 @@ def api_fuel_price(request: HttpRequest):
 
     try:
         payload = _parse_json(request)
-        fp.regular_gtq_gal = Decimal(str(payload["regular_gtq_gal"]))
-        fp.super_gtq_gal = Decimal(str(payload["super_gtq_gal"]))
-        fp.diesel_gtq_gal = Decimal(str(payload["diesel_gtq_gal"]))
+        fp.regular_gtq_gal = decimal_field(payload["regular_gtq_gal"], "Precio de combustible")
+        fp.super_gtq_gal = decimal_field(payload["super_gtq_gal"], "Precio de combustible")
+        fp.diesel_gtq_gal = decimal_field(payload["diesel_gtq_gal"], "Precio de combustible")
         fp.source = str(payload.get("source", "Manual"))
         fp.save()
         return _ok({
@@ -757,7 +827,7 @@ def api_fuel_price(request: HttpRequest):
                 "updated_at": timezone.localtime(fp.updated_at).isoformat(),
             }
         })
-    except (KeyError, ValueError) as exc:
+    except (KeyError, ValueError, PlanningError) as exc:
         return _error(f"Datos inválidos: {exc}")
 
 

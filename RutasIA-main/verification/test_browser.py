@@ -9,8 +9,8 @@ from django.core.cache import cache
 from django.test import override_settings
 from playwright.sync_api import sync_playwright
 
-from logistics.models import Department, Order, Payment, Product, Store, UserProfile, Vehicle
-from logistics.application.services import TripPlanner
+from logistics.models import Department, Order, OrderItem, Payment, Product, Store, UserProfile, Vehicle
+from logistics.application.services import TripPlanner, TripLifecycleService
 
 
 @override_settings(SESSION_COOKIE_SECURE=False, CSRF_COOKIE_SECURE=False)
@@ -49,8 +49,10 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         self.product = Product.objects.create(name="Agua", unit_price=20, unit_weight_kg=20)
         self.store = Store.objects.create(name="Cliente base", department=self.department, latitude="14.63", longitude="-90.51")
         order = Order.objects.create(origin=self.department, destination=self.department, store=self.store, weight_kg=20)
+        OrderItem.objects.create(order=order, product=self.product, quantity=1, unit_price=20)
         vehicle = Vehicle.objects.create(plate="BROWSER", model="Reparto", capacity_kg=1000, fuel_efficiency_km_l=10, cost_per_km=2)
         self.trip = TripPlanner.plan_trip(vehicle, Order.objects.filter(pk=order.pk))
+        self.trip = TripLifecycleService.start_trip(self.trip, recorded_by=self.user)
         options = {"viewport": {"width": 390, "height": 844}, "geolocation": {"latitude": 14.634915, "longitude": -90.506882, "accuracy": 10}, "permissions": ["geolocation"]}
         if self.engine == "webkit":
             options.update(is_mobile=True, has_touch=True)
@@ -67,7 +69,7 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         try:
             self.page.wait_for_function("typeof state !== 'undefined' && state.currentUser !== null", timeout=15000)
             self.page.wait_for_function("!!navigator.serviceWorker.controller", timeout=15000)
-            self.page.evaluate("async () => { for (let i=0;i<150;i++) { if (await caches.open('flamia-shell-v3').then(cache => cache.match('/'))) return; await new Promise(r => setTimeout(r,100)); } throw new Error('Offline shell not ready'); }")
+            self.page.evaluate("async () => { for (let i=0;i<150;i++) { if (await caches.open('flamia-shell-v4').then(cache => cache.match('/'))) return; await new Promise(r => setTimeout(r,100)); } throw new Error('Offline shell not ready'); }")
         except Exception:
             print("Browser diagnostic:", self.page.url, self.errors, self.page.locator("body").inner_text()[-1000:], flush=True)
             raise
@@ -216,6 +218,84 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         self.page.evaluate("Promise.all([syncPendingData(),syncPendingData()])")
         self.queue_count(0)
         self.assertEqual(Store.objects.filter(name__in=["Pendiente A", "Pendiente B"]).count(), 2)
+
+    def test_credit_history_and_offline_partial_collection(self):
+        order = self.trip.orders.get()
+        self.tab("payments")
+        self.page.locator("#payment-store").select_option(str(self.store.pk))
+        self.page.locator("#payment-order").select_option(str(order.pk))
+        self.page.locator('#payment-form [name="payment_type"]').select_option("credit")
+        self.assertEqual(self.page.locator('#payment-form [name="amount"]').input_value(), "0.00")
+        self.page.locator('#payment-form [type="submit"]').click()
+        self.page.wait_for_function("state.payments.some(payment => payment.payment_type === 'credit') && !document.querySelector('[data-saving]')")
+        self.assertEqual(order.balance_due, 20)
+        self.context.set_offline(True)
+        self.page.locator("#payment-store").select_option(str(self.store.pk))
+        self.page.locator("#payment-order").select_option(str(order.pk))
+        self.page.locator('#payment-form [name="amount"]').fill("7")
+        self.page.locator('#payment-form [type="submit"]').click()
+        self.queue_count(1)
+        self.tab("stores")
+        self.page.locator("#customer-history-select").select_option(str(self.store.pk))
+        self.page.wait_for_function("document.querySelector('#customer-history').textContent.includes('Q 13.00')")
+        self.assertIn("Abonado", self.page.locator("#customer-history").inner_text())
+        self.assertIn("reparto", self.page.locator("#customer-history").inner_text())
+        self.page.reload()
+        self.page.wait_for_function("state.currentUser !== null")
+        self.context.set_offline(False)
+        self.page.evaluate("syncPendingData()")
+        self.queue_count(0)
+        self.assertEqual(order.balance_due, 13)
+        self.assertEqual(Payment.objects.count(), 2)
+        self.page.wait_for_function("state.report.paid_total === 7")
+
+    def test_admin_can_update_role_from_users_module(self):
+        self.user.profile.role = "admin"
+        self.user.profile.save()
+        other = User.objects.create_user("usuario-nuevo")
+        UserProfile.objects.create(user=other, role="operator")
+        self.page.evaluate("reloadAll()")
+        self.tab("users")
+        self.page.locator("#access-user").select_option(str(other.pk))
+        self.page.locator('#user-access-form [name="role"]').select_option("supervisor")
+        self.page.locator('#user-access-form [type="submit"]').click()
+        self.page.wait_for_function("state.users.some(user => user.username === 'usuario-nuevo' && user.role === 'supervisor')")
+        other.profile.refresh_from_db()
+        self.assertEqual(other.profile.role, "supervisor")
+
+    def test_new_offline_order_can_be_cancelled_before_synchronization(self):
+        self.context.set_offline(True)
+        self.page.evaluate("""async payload => {
+            await postJsonOrQueue('/api/orders/', payload, 'Pedido de cliente');
+            const order = state.orders.find(order => order.id < 0);
+            await postJsonOrQueue(`/api/orders/${order.id}/action/`, {action:'cancel'}, 'Cancelar pedido');
+        }""", {"origin_id": self.department.pk, "store_id": self.store.pk, "items": [{"product_id": self.product.pk, "quantity": 1}]})
+        self.queue_count(2)
+        self.assertEqual(self.page.evaluate("state.orders.find(order => order.id < 0).status"), "canceled")
+        self.context.set_offline(False)
+        self.page.evaluate("syncPendingData()")
+        self.queue_count(0)
+        self.assertEqual(Order.objects.filter(status="canceled").count(), 1)
+
+    def test_offline_money_uses_cents_without_residual_balances(self):
+        self.context.set_offline(True)
+        result = self.page.evaluate("""async payload => {
+            await postJsonOrQueue('/api/orders/', payload, 'Pedido con centavos');
+            const order = state.orders.find(order => order.id < 0);
+            await postJsonOrQueue('/api/payments/', {store_id:payload.store_id,order_id:order.id,
+                amount:0.30,payment_type:'full_payment',uuid:makeLocalId()}, 'Pago con centavos');
+            return state.orders.find(order => order.id < 0);
+        }""", {"origin_id": self.department.pk, "store_id": self.store.pk,
+                    "items": [{"product_id": self.product.pk, "quantity": 3, "unit_price": 0.10}]})
+        self.assertEqual(result["total_amount"], 0.30)
+        self.assertEqual(result["paid_amount"], 0.30)
+        self.assertEqual(result["balance_due"], 0)
+        self.assertEqual(result["payment_status"], "paid")
+        self.context.set_offline(False)
+        self.page.evaluate("syncPendingData()")
+        self.queue_count(0)
+        order = Order.objects.exclude(pk=self.trip.orders.get().pk).get()
+        self.assertEqual(order.balance_due, 0)
 
 
 class WebKitOfflineTests(OfflineBrowserTests):

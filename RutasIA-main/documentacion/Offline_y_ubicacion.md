@@ -29,9 +29,9 @@ La cola antigua de localStorage se conserva y puede descargarse desde el panel. 
 
 ## Despliegue
 
-La migración `0009` añade precisión y fecha de captura a clientes, coordenadas de entrega a paradas y comprobantes de operaciones para evitar duplicados. No altera coordenadas existentes. Los comandos de arranque de Render y Procfile aplican migraciones antes de arrancar Gunicorn. Si el servicio usa comandos personalizados en su panel, actualizarlo o ejecutar `python manage.py migrate --noinput` antes de arrancar esta versión.
+La migración `0009` añade precisión y fecha de captura a clientes, coordenadas de entrega a paradas y comprobantes de operaciones para evitar duplicados. No altera coordenadas existentes. Los comandos de arranque de Render y Procfile verifican la configuracion con `check --deploy --fail-level ERROR` y aplican migraciones antes de arrancar Gunicorn. Deben configurarse DEBUG=False, SECRET_KEY segura, DATABASE_URL, ALLOWED_HOSTS y CSRF_TRUSTED_ORIGINS explicitos. Si el servicio usa comandos personalizados en su panel, actualizarlo o ejecutar `python manage.py migrate --noinput` antes de arrancar esta versión.
 
-El build debe ejecutar `python manage.py collectstatic --noinput` para incluir `offline.js`, `location.js` y el service worker actualizado. Recargar con conexión después del despliegue y comprobar que la nueva versión se ha instalado antes de salir a repartir. No borrar comprobantes de operaciones mientras existan dispositivos que puedan reenviar solicitudes antiguas.
+El build debe ejecutar `python manage.py collectstatic --noinput` para incluir `offline.js`, `location.js`, `business.js` y el service worker actualizado. Recargar con conexión después del despliegue y comprobar que la nueva versión se ha instalado antes de salir a repartir. No borrar comprobantes de operaciones mientras existan dispositivos que puedan reenviar solicitudes antiguas.
 
 No se ha publicado esta versión ni accedido a una base de datos de la empresa durante la implementación.
 
@@ -49,6 +49,6 @@ python manage.py makemigrations --check --dry-run
 
 La configuración de pruebas usa una base SQLite temporal separada y no utiliza `DATABASE_URL`. Las pruebas de navegador usan Chrome instalado en Windows si está disponible; en otros equipos utilizan Chromium de Playwright. Puede indicarse `FLAMIA_CHROME_EXECUTABLE` para seleccionar otro Chrome. WebKit se prueba con pantalla y entrada táctil móvil. Los permisos y coordenadas se emulan de forma controlada; las llamadas externas del mapa se bloquean durante estas pruebas para no consumir claves.
 
-La suite cubre 15 pruebas de backend y 10 de navegador: recarga offline, tienda → pedido → cobro, saldos, sincronización, ubicación de entrega, permiso denegado, pérdida de respuesta después del guardado, almacenamiento fallido, sesión vencida, cambio de cuenta y concurrencia con el bloqueo alternativo para Safari.
+La suite se amplio con casos de fidelidad documental (ver `Trazabilidad_requisitos.md`). Incluye pruebas de backend y de navegador para: recarga offline, tienda → pedido → cobro, saldos, sincronización, ubicación de entrega, permiso denegado, pérdida de respuesta después del guardado, almacenamiento fallido, sesión vencida, cambio de cuenta y concurrencia con el bloqueo alternativo para Safari.
 
 Antes de habilitarlo en la empresa, repetir el recorrido en los dispositivos físicos con el dominio HTTPS real: conceder y denegar permisos, capturar frente a una tienda, desconectar internet, registrar tienda/pedido/cobro/entrega, cerrar y reabrir la app, recuperar red y comprobar en otro equipo que cada operación aparece una sola vez. Las pruebas de WebKit no certifican el GPS ni los permisos del sistema operativo de un iPhone físico.

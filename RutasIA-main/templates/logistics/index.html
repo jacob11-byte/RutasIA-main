@@ -306,6 +306,11 @@
                         </table>
                     </article>
                 </div>
+                <article class="table-card">
+                    <h3>Historial del cliente</h3>
+                    <label>Cliente <select id="customer-history-select"></select></label>
+                    <div id="customer-history" aria-live="polite"></div>
+                </article>
             </section>
 
             <!-- PRODUCTS -->
@@ -402,8 +407,8 @@
                         <h3>Crear entrega</h3>
                         <form id="order-form">
                             <label>Tienda registrada
-                                <select name="store_id" id="order-store">
-                                    <option value="">Sin tienda registrada</option>
+                                <select name="store_id" id="order-store" required>
+                                    <option value="">Seleccione cliente...</option>
                                 </select>
                             </label>
                             <label>Base de salida
@@ -470,6 +475,7 @@
                                     <th>Saldo</th>
                                     <th>Prioridad</th>
                                     <th>Estado</th>
+                                    <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="orders-body"></tbody>
@@ -492,7 +498,10 @@
                                     <option value="">Sin pedido especifico</option>
                                 </select>
                             </label>
-                            <label>Monto (Q)
+                            <label>Repartidor que recibe el cobro
+                                <select name="driver_id" id="payment-driver"><option value="">Cobro en caja / sin repartidor</option></select>
+                            </label>
+                            <label>Monto recibido (Q)
                                 <input name="amount" type="number" step="0.01" min="0.01" required>
                             </label>
                             <label>Tipo
@@ -510,8 +519,9 @@
                                 </select>
                             </label>
                             <label>Nota
-                                <input name="note" placeholder="Recibo, referencia o comentario">
+                                <input name="note" maxlength="240" placeholder="Recibo, referencia o comentario">
                             </label>
+                            <small id="payment-help">Un cobro sin pedido se aplica primero a los pedidos mas antiguos del cliente. Registrar credito no representa dinero recibido.</small>
                             <button type="submit">Guardar cobro</button>
                         </form>
                     </article>
@@ -558,6 +568,9 @@
                         Selecciona entregas pendientes para ordenar varias tiendas en un solo recorrido del repartidor.
                     </p>
                     <form id="planner-form">
+                        <label>Algoritmo de planificacion
+                            <select name="algorithm"><option value="dijkstra">Dijkstra</option><option value="astar">A*</option></select>
+                        </label>
                         <label>Vehiculo
                             <select id="planner-vehicle" name="vehicle_id" required></select>
                         </label>
@@ -628,7 +641,7 @@
                         <label>Resultado <select name="status"><option value="delivered">Entregado</option><option value="not_delivered">No entregado</option></select></label>
                         <label>Observacion <input name="observation" maxlength="240" placeholder="Referencia de la entrega"></label>
                         <button type="button" id="btn-delivery-gps" class="btn-small btn-neutral">Tomar mi ubicacion actual</button>
-                        <small id="delivery-gps-status" role="status" aria-live="polite">Captura tu ubicacion estando en el lugar de entrega. Se guarda por separado de la ubicacion de la tienda.</small>
+                        <small id="delivery-gps-status" role="status" aria-live="polite">Inicia la ruta y captura tu ubicacion estando en el lugar de entrega. Se guarda por separado de la ubicacion de la tienda.</small>
                         <button type="submit">Guardar entrega y ubicacion</button>
                     </form>
                 </article>
@@ -809,6 +822,15 @@
                         </form>
                     </article>
 
+                    <article class="form-card">
+                        <h3>Actualizar rol y acceso</h3>
+                        <form id="user-access-form">
+                            <label>Usuario <select name="user_id" id="access-user" required></select></label>
+                            <label>Rol <select name="role"><option value="operator">Operador</option><option value="supervisor">Supervisor</option><option value="admin">Administrador</option></select></label>
+                            <label class="inline"><input type="checkbox" name="is_active" checked> Cuenta activa</label>
+                            <button type="submit">Guardar acceso</button>
+                        </form>
+                    </article>
                     <article class="table-card">
                         <h3>Usuarios del sistema</h3>
                         <table>
@@ -845,6 +867,7 @@
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBcoQAzpOO8-BDwaSvM0owPca0_NCdoK3k&libraries=places"></script>
     <script src="{% static 'logistics/offline.js' %}" defer></script>
     <script src="{% static 'logistics/location.js' %}" defer></script>
+    <script src="{% static 'logistics/business.js' %}" defer></script>
     <script src="{% static 'logistics/app.js' %}" defer></script>
 </body>
 </html>

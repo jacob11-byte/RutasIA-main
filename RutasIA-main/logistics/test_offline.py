@@ -87,6 +87,7 @@ class OfflineApiTests(TestCase):
 
     def test_operator_can_capture_delivery_without_changing_store_coordinates(self):
         trip = TripPlanner.plan_trip(self.vehicle, Order.objects.filter(pk=self.order.pk))
+        TripLifecycleService.start_trip(trip)
         stop = trip.stops.get()
         self.user.profile.role = UserProfile.Role.OPERATOR
         self.user.profile.save()
@@ -105,6 +106,7 @@ class OfflineApiTests(TestCase):
     def test_completing_trip_preserves_failed_delivery_and_capture_time(self):
         other = Order.objects.create(origin=self.department, destination=self.department, store=self.store, weight_kg=20)
         trip = TripPlanner.plan_trip(self.vehicle, Order.objects.filter(pk__in=[self.order.pk, other.pk]))
+        TripLifecycleService.start_trip(trip)
         stop = trip.stops.get(order=self.order)
         stop.status = RouteStop.Status.NOT_DELIVERED
         stop.save()
@@ -125,6 +127,7 @@ class OfflineApiTests(TestCase):
 
     def test_closed_trip_rejects_new_stop_mutation(self):
         trip = TripPlanner.plan_trip(self.vehicle, Order.objects.filter(pk=self.order.pk))
+        TripLifecycleService.start_trip(trip)
         stop = trip.stops.get()
         TripLifecycleService.complete_trip(trip)
         response = self.post(f"/api/trips/{trip.pk}/stops/{stop.pk}/", {"status": "not_delivered"})
