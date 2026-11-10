@@ -147,9 +147,6 @@
                     const order = rows(snapshots, "/api/orders/", "orders").find(row => row.id === value.id);
                     if (order) order.status = value.status;
                 }
-                if (p.action === "complete") for (const stop of trip.stops) {
-                    if (stop.status === "pending") Object.assign(stop, { status: "delivered", delivered_at: stamp });
-                }
             } else if (p.note && !trip.events.some(event => event.id === response?.event?.id)) {
                 trip.events.unshift(response?.event || { id, note: p.note, created_at: stamp });
             }

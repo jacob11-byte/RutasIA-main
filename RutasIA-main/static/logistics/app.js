@@ -78,6 +78,7 @@ let gpsSimMarker = null;
 let lastDirectionsResult = null;
 let deliverySimTimer = null;
 let isSyncingOfflineQueue = false;
+let editingStoreId = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
     initPwa();
@@ -133,6 +134,7 @@ function bindForms() {
     document.getElementById("vehicle-form").addEventListener("submit", onVehicleSubmit);
     bindSafeSubmit("store-form", onStoreSubmit);
     document.getElementById("btn-store-gps").addEventListener("click", fillStoreGpsFromDevice);
+    document.getElementById("btn-cancel-store-edit").addEventListener("click", cancelStoreEdit);
     document.getElementById("order-store").addEventListener("change", onOrderStoreChange);
     document.getElementById("order-product").addEventListener("change", updateOrderEstimate);
     document.querySelector("#order-form input[name='quantity']").addEventListener("input", updateOrderEstimate);
@@ -179,7 +181,7 @@ function initPwa() {
             // The first navigation happened before the worker controlled this page.
             const shell = await fetch("/", { credentials: "same-origin", cache: "no-store" });
             if (shell.ok && shell.headers.get("X-Flamia-User-ID") === FlamiaOffline.owner) {
-                const cache = await caches.open("flamia-shell-v4");
+                const cache = await caches.open("flamia-shell-v5");
                 await cache.put("/", shell);
             }
         }).catch((error) => {
@@ -375,6 +377,7 @@ function renderAll() {
     renderOrdersFiltered();
     renderPaymentStoreSelect();
     renderPaymentOrderSelect();
+    renderPaymentTripSelect();
     renderPayments();
     renderBalances();
     renderReport();
@@ -393,21 +396,36 @@ function renderUserInfo() {
     if (!user) return;
     document.getElementById("user-name").textContent = user.full_name || user.username;
     const badge = document.getElementById("user-badge");
-    const roleLabels = { admin: "Admin", supervisor: "Supervisor", operator: "Operador" };
+    const roleLabels = { admin: "Admin", supervisor: "Supervisor", seller: "Vendedor/cobrador", driver: "Repartidor" };
     badge.textContent = roleLabels[user.role] || user.role;
     badge.className = `role-badge role-${user.role}`;
 
     const isAdmin = user.role === "admin";
     const isSupervisor = user.role === "supervisor" || isAdmin;
+    const isSeller = user.role === "seller";
+    const isDriver = user.role === "driver";
 
-    document.getElementById("tab-users-btn").style.display = isAdmin ? "" : "none";
-    document.getElementById("tab-departments-btn").style.display = isSupervisor ? "" : "none";
+    const allowedTabs = {
+        admin: ["dashboard", "planner", "trips", "map", "orders", "payments", "stores", "products", "vehicles", "drivers", "reports", "departments", "users"],
+        supervisor: ["dashboard", "planner", "trips", "map", "orders", "payments", "stores", "products", "vehicles", "drivers", "reports", "departments"],
+        seller: ["dashboard", "orders", "payments", "stores"],
+        driver: ["dashboard", "trips", "map", "payments"],
+    }[user.role] || ["dashboard"];
+    document.querySelectorAll(".tab[data-tab]").forEach(button => {
+        button.style.display = allowedTabs.includes(button.dataset.tab) ? "" : "none";
+    });
+    const active = document.querySelector(".tab.is-active");
+    if (active && !allowedTabs.includes(active.dataset.tab)) document.querySelector('.tab[data-tab="dashboard"]')?.click();
+
     document.getElementById("vehicle-form-card").style.display = isSupervisor ? "" : "none";
-    document.getElementById("store-form-card").style.display = isSupervisor ? "" : "none";
+    document.getElementById("store-form-card").style.display = (isSupervisor || isSeller) ? "" : "none";
     document.getElementById("product-form-card").style.display = isSupervisor ? "" : "none";
     document.getElementById("driver-form-card").style.display = isSupervisor ? "" : "none";
-    document.getElementById("order-form-card").style.display = "";
+    document.getElementById("order-form-card").style.display = (isSupervisor || isSeller) ? "" : "none";
     document.getElementById("department-form-card").style.display = isSupervisor ? "" : "none";
+    document.getElementById("btn-navigate-next").style.display = isDriver ? "" : "none";
+    document.getElementById("btn-start-gps").style.display = isSupervisor ? "" : "none";
+    document.getElementById("btn-sim-delivery").style.display = isSupervisor ? "" : "none";
 }
 
 function renderDashboard() {
@@ -492,7 +510,7 @@ function renderStores() {
     if (!body) return;
     body.innerHTML = "";
     if (!state.stores.length) {
-        body.innerHTML = `<tr><td colspan="9">No hay tiendas registradas.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="11">No hay tiendas registradas.</td></tr>`;
         return;
     }
     state.stores.forEach((store) => {
@@ -502,12 +520,14 @@ function renderStores() {
                 <td><strong>${escapeHtml(store.name)}</strong><br><small>${escapeHtml(store.address || store.reference || "-")}</small></td>
                 <td>${escapeHtml(store.department_name)}</td>
                 <td>${productTypeLabel(store.product_type)}</td>
+                <td>${visitFrequencyLabel(store.visit_frequency)}</td>
                 <td>${escapeHtml(store.phone || "-")}</td>
                 <td>${escapeHtml(store.municipality || "-")}</td>
                 <td>${escapeHtml(store.neighborhood || "-")}</td>
                 <td>${Number(store.latitude).toFixed(5)}, ${Number(store.longitude).toFixed(5)}</td>
                 <td>${statusChip(store.is_active ? "active" : "inactive")}</td>
                 <td><button type="button" class="btn-inline" data-focus-store="${store.id}">Ver</button></td>
+                <td>${["admin", "supervisor", "seller"].includes(state.currentUser?.role) ? `<button type="button" class="btn-inline" data-edit-store="${store.id}">Editar</button>` : "-"}</td>
             </tr>`
         );
     });
@@ -672,7 +692,7 @@ function renderOrdersFiltered() {
                 <td>Q ${Number(o.balance_due || 0).toFixed(2)}<br><small>${paymentStatusLabel(o)}</small></td>
                 <td>${priorityLabel(o.priority)}</td>
                 <td>${statusChip(o.status)}</td>
-                <td>${state.currentUser?.role !== "operator" && ["pending", "assigned"].includes(o.status) && !o.paid_amount ? `<button type="button" data-cancel-order="${o.id}">Cancelar pedido</button>` : "-"}</td>
+                <td>${["admin", "supervisor"].includes(state.currentUser?.role) && ["pending", "assigned"].includes(o.status) && !o.paid_amount ? `<button type="button" data-cancel-order="${o.id}">Cancelar pedido</button>` : "-"}</td>
             </tr>`
         );
     });
@@ -868,7 +888,7 @@ function renderUsers() {
         body.innerHTML = `<tr><td colspan="5">No hay usuarios registrados.</td></tr>`;
         return;
     }
-    const roleLabels = { admin: "Administrador", supervisor: "Supervisor", operator: "Operador" };
+    const roleLabels = { admin: "Administrador", supervisor: "Supervisor", seller: "Vendedor/cobrador", driver: "Repartidor" };
     state.users.forEach((u) => {
         body.insertAdjacentHTML(
             "beforeend",
@@ -963,28 +983,17 @@ async function focusMapTripById(tripId, options = {}) {
         return;
     }
 
-    const waypointCoords = trip.route_nodes
-        .map((name) => {
-            const dept = state.departments.find((d) => d.name === name);
-            return dept && dept.latitude ? [Number(dept.longitude), Number(dept.latitude)] : null;
-        })
-        .filter(Boolean);
-    const routeLabels = [...trip.route_nodes];
-
-    const storeStops = [];
-    trip.orders.forEach((order) => {
-        if (!order.store_latitude || !order.store_longitude) return;
-        const key = `${order.store_latitude},${order.store_longitude}`;
-        if (storeStops.some((stop) => stop.key === key)) return;
-        storeStops.push({
-            key,
-            name: order.store_name || order.destination_name,
-            coords: [Number(order.store_longitude), Number(order.store_latitude)]
-        });
-    });
-    storeStops.forEach((stop) => {
-        waypointCoords.push(stop.coords);
-        routeLabels.push(stop.name);
+    const waypointCoords = [];
+    const routeLabels = [];
+    const origin = state.departments.find((department) => department.name === trip.origin_name);
+    if (origin?.latitude && origin?.longitude) {
+        waypointCoords.push([Number(origin.longitude), Number(origin.latitude)]);
+        routeLabels.push(`Base: ${origin.name}`);
+    }
+    [...(trip.stops || [])].sort((a, b) => a.sequence - b.sequence).forEach((stop) => {
+        if (stop.latitude == null || stop.longitude == null) return;
+        waypointCoords.push([Number(stop.longitude), Number(stop.latitude)]);
+        routeLabels.push(stop.store_name || stop.order_code || `Parada ${stop.sequence}`);
     });
 
     if (waypointCoords.length < 2) {
@@ -1206,7 +1215,7 @@ function updateMapRouteSummary(trip) {
 function renderMapStops(trip) {
     const stopsBox = document.getElementById("map-route-stops");
     if (!stopsBox) return;
-    const stops = trip.stops || [];
+    const stops = [...(trip.stops || [])].sort((a, b) => a.sequence - b.sequence);
     if (!stops.length) {
         stopsBox.innerHTML = "";
         return;
@@ -1221,8 +1230,12 @@ function renderMapStops(trip) {
                         <span>${statusChip(stop.status)} ${stop.observation ? escapeHtml(stop.observation) : ""}</span>
                     </div>
                     <div class="route-stop-actions">
-                        <button type="button" class="btn-inline" data-stop-id="${stop.id}" data-stop-status="delivered">Entregado</button>
-                        <button type="button" class="btn-inline btn-danger" data-stop-id="${stop.id}" data-stop-status="not_delivered">No entregado</button>
+                        ${state.currentUser?.role === "driver"
+                            ? `<button type="button" class="btn-inline" data-open-delivery-stop="${stop.id}">Registrar con GPS</button>`
+                            : ["admin", "supervisor"].includes(state.currentUser?.role)
+                                ? `<button type="button" class="btn-inline" data-stop-id="${stop.id}" data-stop-status="delivered">Entregado</button>
+                                   <button type="button" class="btn-inline btn-danger" data-stop-id="${stop.id}" data-stop-status="not_delivered">No entregado</button>`
+                                : ""}
                     </div>
                 </article>
             `).join("")}
@@ -1231,6 +1244,15 @@ function renderMapStops(trip) {
 }
 
 async function onRouteStopAction(event) {
+    const openDelivery = event.target.closest("button[data-open-delivery-stop]");
+    if (openDelivery && selectedMapTripId) {
+        document.querySelector('[data-tab="trips"]')?.click();
+        document.getElementById("delivery-trip").value = String(selectedMapTripId);
+        renderDeliveryStops();
+        document.getElementById("delivery-stop").value = openDelivery.dataset.openDeliveryStop;
+        document.getElementById("delivery-location-form").scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+    }
     const button = event.target.closest("button[data-stop-id][data-stop-status]");
     if (!button || !selectedMapTripId) return;
     const stopId = Number(button.dataset.stopId);
@@ -1366,12 +1388,12 @@ async function simulateDelivery(tripId) {
             startGpsSimulation();
         }
 
-        const stops = trip.orders.length ? trip.orders : [{ destination_name: trip.destination_name, package_count: 1 }];
-        for (const [index, order] of stops.entries()) {
+        const stops = [...(trip.stops || [])].sort((a, b) => a.sequence - b.sequence);
+        for (const [index, stop] of stops.entries()) {
             await sleep(1100);
             const paidMode = index % 3 === 1 ? "abono parcial registrado" : "pago contado registrado";
-            const note = `Simulacion: visita ${index + 1}/${stops.length} en ${order.destination_name}; ${order.package_count} producto(s); ${paidMode}.`;
-            await postJson(`/api/trips/${tripId}/events/`, { note });
+            const note = `Simulacion: visita ${index + 1}/${stops.length} en ${stop.store_name || stop.order_code}; ${paidMode}.`;
+            await postJson(`/api/trips/${tripId}/stops/${stop.id}/`, { status: "delivered", observation: note });
             showToast(`Simulacion: visita ${index + 1} registrada.`);
         }
 
@@ -1470,6 +1492,7 @@ async function onStoreSubmit(event) {
         neighborhood: form.neighborhood.value.trim(),
         department_id: Number(form.department_id.value),
         product_type: form.product_type.value,
+        visit_frequency: form.visit_frequency.value,
         address: form.address.value.trim(),
         reference: form.reference.value.trim(),
         latitude: Number(form.latitude.value),
@@ -1479,16 +1502,25 @@ async function onStoreSubmit(event) {
         is_active: form.is_active.checked
     };
     try {
-        const response = await postJsonOrQueue(API.stores, payload, "Registrar tienda");
+        if (editingStoreId && !navigator.onLine) {
+            showToast("Conectate a internet para editar una tienda existente.", true);
+            return;
+        }
+        const response = editingStoreId
+            ? await postJson(`/api/stores/${editingStoreId}/`, payload)
+            : await postJsonOrQueue(API.stores, payload, "Registrar tienda");
         form.reset();
         const status = document.getElementById("store-gps-status");
         if (status) status.textContent = "";
         storeLocationCapture = null;
+        editingStoreId = null;
+        document.getElementById("store-submit").textContent = "Guardar tienda";
+        document.getElementById("btn-cancel-store-edit").style.display = "none";
         if (response.queued) {
             showToast("Tienda guardada sin conexion. Se sincronizara despues.");
             return;
         }
-        showToast("Tienda registrada con GPS.");
+        showToast("Tienda guardada con GPS.");
         await reloadAll();
         if (window.google?.maps) focusStoreById(response.store.id);
     } catch (error) {
@@ -1510,9 +1542,57 @@ function onOrderStoreChange(event) {
 }
 
 function onStoresActionClick(event) {
+    const editButton = event.target.closest("button[data-edit-store]");
+    if (editButton) {
+        editStore(Number(editButton.dataset.editStore));
+        return;
+    }
     const button = event.target.closest("button[data-focus-store]");
     if (!button) return;
     focusStoreById(Number(button.dataset.focusStore));
+}
+
+function renderPaymentTripSelect() {
+    const select = document.getElementById("payment-trip");
+    if (!select) return;
+    const previous = select.value;
+    const trips = state.trips.filter(trip => ["planned", "in_progress"].includes(trip.status));
+    select.innerHTML = '<option value="">Cobro fuera de ruta</option>'
+        + trips.map(trip => `<option value="${trip.id}">${escapeHtml(trip.code)} - ${escapeHtml(trip.driver_name || "Sin repartidor")}</option>`).join("");
+    if (previous && trips.some(trip => String(trip.id) === previous)) select.value = previous;
+    select.required = state.currentUser?.role === "driver";
+    if (select.required && !select.value && trips.length === 1) select.value = String(trips[0].id);
+}
+
+function editStore(storeId) {
+    const store = state.stores.find(item => item.id === storeId);
+    if (!store) return;
+    const form = document.getElementById("store-form");
+    for (const name of ["name", "contact_name", "phone", "municipality", "neighborhood", "product_type", "visit_frequency", "address", "reference", "latitude", "longitude"]) {
+        if (form.elements[name]) form.elements[name].value = store[name] ?? "";
+    }
+    form.department_id.value = String(store.department_id);
+    form.is_active.checked = store.is_active;
+    storeLocationCapture = store.location_captured_at ? {
+        latitude: store.latitude,
+        longitude: store.longitude,
+        accuracy_m: store.location_accuracy_m,
+        captured_at: store.location_captured_at,
+    } : null;
+    editingStoreId = store.id;
+    document.getElementById("store-submit").textContent = "Guardar cambios";
+    document.getElementById("btn-cancel-store-edit").style.display = "";
+    document.getElementById("store-form-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelStoreEdit() {
+    editingStoreId = null;
+    storeLocationCapture = null;
+    const form = document.getElementById("store-form");
+    form.reset();
+    document.getElementById("store-submit").textContent = "Guardar tienda";
+    document.getElementById("btn-cancel-store-edit").style.display = "none";
+    document.getElementById("store-gps-status").textContent = "";
 }
 
 function focusStoreById(storeId) {
@@ -1621,6 +1701,7 @@ async function onPaymentSubmit(event) {
         payment_type: form.payment_type.value,
         method: form.method.value,
         note: form.note.value.trim(),
+        trip_id: form.trip_id.value ? Number(form.trip_id.value) : null,
         sync_status: navigator.onLine ? "synced" : "pending",
         driver_id: form.driver_id.value ? Number(form.driver_id.value) : null,
         uuid: makeLocalId()
@@ -1697,6 +1778,11 @@ async function onTripsActionClick(event) {
     if (!button) return;
     const tripId = Number(button.dataset.tripId);
     const action = button.dataset.action;
+    const trip = state.trips.find(row => row.id === tripId);
+    if (action === "complete" && trip?.stops?.some(stop => stop.status === "pending")) {
+        showToast("Registra cada parada como entregada o no entregada antes de completar la ruta.", true);
+        return;
+    }
     try {
         const response = await postJsonOrQueue(`/api/trips/${tripId}/action/`, { action }, `Ruta: ${statusLabel(action)}`);
         showToast(response.queued ? `Accion "${action}" guardada sin conexion.` : `Accion "${action}" ejecutada.`);
@@ -1755,6 +1841,8 @@ async function onUserSubmit(event) {
         first_name: form.first_name.value.trim(),
         last_name: form.last_name.value.trim(),
         email: form.email.value.trim(),
+        phone: form.phone.value.trim(),
+        license_number: form.license_number.value.trim(),
         role: form.role.value
     };
     try {
@@ -1791,9 +1879,13 @@ function showPlannerResult(trip) {
 }
 
 function buildTripActions(trip) {
-    const role = state.currentUser ? state.currentUser.role : "operator";
-    if (role === "operator") return "—";
+    const role = state.currentUser ? state.currentUser.role : "seller";
+    if (role === "seller") return "—";
     if (trip.status === "completed" || trip.status === "canceled") return "Sin acciones";
+    if (role === "driver") {
+        if (trip.status === "planned") return `<button class="btn-inline" data-action="start" data-trip-id="${trip.id}">Iniciar mi ruta</button>`;
+        return `<button class="btn-inline btn-neutral" data-action="complete" data-trip-id="${trip.id}">Completar mi ruta</button>`;
+    }
     const simButton = `<button class="btn-inline btn-neutral" data-simulate-delivery="1" data-trip-id="${trip.id}">Simular entrega</button>`;
     if (trip.status === "planned") {
         return `
@@ -2015,6 +2107,11 @@ function priorityLabel(priority) {
 function productTypeLabel(productType) {
     const labels = { water: "Agua", gas: "Gas", both: "Agua y gas" };
     return labels[productType] || productType;
+}
+
+function visitFrequencyLabel(value) {
+    const labels = { on_demand: "Bajo pedido", weekly: "Semanal", biweekly: "Quincenal", monthly: "Mensual" };
+    return labels[value] || value || "Bajo pedido";
 }
 
 function paymentTypeLabel(paymentType) {

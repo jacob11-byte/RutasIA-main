@@ -1,5 +1,5 @@
-const STATIC_CACHE = "flamia-static-v5";
-const SHELL_CACHE = "flamia-shell-v4";
+const STATIC_CACHE = "flamia-static-v6";
+const SHELL_CACHE = "flamia-shell-v5";
 const APP_SHELL = [
   "/manifest.json", "/static/logistics/style.css", "/static/logistics/app.js",
   "/static/logistics/offline.js", "/static/logistics/location.js", "/static/logistics/business.js",

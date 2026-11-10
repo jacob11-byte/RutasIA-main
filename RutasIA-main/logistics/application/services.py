@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from logistics.models import Department, Driver, FuelPrice, Order, RouteStop, Trip, TripEvent, TripOrder, Vehicle
 from logistics.domain.exceptions import PlanningError
-from logistics.domain.services import AStarOptimizer, RouteOptimizer, to_decimal, ZERO
+from logistics.domain.services import AStarOptimizer, RouteOptimizer, haversine_km, to_decimal, ZERO
 
 LITERS_PER_GALLON = Decimal("3.78541")
 
@@ -36,15 +36,28 @@ class TripPlanner:
     def _ordered_stops(order_list: list[Order], optimizer) -> list[Order]:
         pending = order_list[:]
         current_id = pending[0].origin_id
+        origin = pending[0].origin
+        current_coords = (
+            (float(origin.latitude), float(origin.longitude))
+            if origin.latitude is not None and origin.longitude is not None else None
+        )
         ordered: list[Order] = []
         while pending:
             best_order = None
             best_distance = None
             for order in pending:
                 try:
-                    _nodes, distance = optimizer.shortest_path(current_id, order.destination_id)
+                    _nodes, graph_distance = optimizer.shortest_path(current_id, order.destination_id)
                 except PlanningError:
                     continue
+                distance = graph_distance
+                if current_coords and order.store and order.store.latitude is not None and order.store.longitude is not None:
+                    # The operational visit order is based on each store's exact GPS point.
+                    # Dijkstra/A* remains responsible for validating the inter-zone network.
+                    distance = haversine_km(
+                        current_coords[0], current_coords[1],
+                        float(order.store.latitude), float(order.store.longitude),
+                    )
                 if best_distance is None or distance < best_distance:
                     best_order = order
                     best_distance = distance
@@ -53,23 +66,39 @@ class TripPlanner:
             ordered.append(best_order)
             pending.remove(best_order)
             current_id = best_order.destination_id
+            if best_order.store and best_order.store.latitude is not None and best_order.store.longitude is not None:
+                current_coords = (float(best_order.store.latitude), float(best_order.store.longitude))
         return ordered
 
     @staticmethod
     def _build_route(order_list: list[Order], optimizer) -> tuple[list[int], Decimal, list[Order]]:
         ordered_orders = TripPlanner._ordered_stops(order_list, optimizer)
         current_id = order_list[0].origin_id
+        origin = order_list[0].origin
+        current_coords = (
+            (float(origin.latitude), float(origin.longitude))
+            if origin.latitude is not None and origin.longitude is not None else None
+        )
         route_node_ids: list[int] = []
         total_distance = ZERO
 
         for order in ordered_orders:
-            node_ids, distance = optimizer.shortest_path(current_id, order.destination_id)
+            node_ids, graph_distance = optimizer.shortest_path(current_id, order.destination_id)
+            distance = graph_distance
+            if current_coords and order.store and order.store.latitude is not None and order.store.longitude is not None:
+                exact_leg = haversine_km(
+                    current_coords[0], current_coords[1],
+                    float(order.store.latitude), float(order.store.longitude),
+                )
+                distance = max(graph_distance, exact_leg)
             if route_node_ids and node_ids and route_node_ids[-1] == node_ids[0]:
                 route_node_ids.extend(node_ids[1:])
             else:
                 route_node_ids.extend(node_ids)
             total_distance += distance
             current_id = order.destination_id
+            if order.store and order.store.latitude is not None and order.store.longitude is not None:
+                current_coords = (float(order.store.latitude), float(order.store.longitude))
 
         return route_node_ids, to_decimal(total_distance), ordered_orders
 
@@ -175,6 +204,8 @@ class TripLifecycleService:
         trip = Trip.objects.select_for_update().get(pk=trip.pk)
         if trip.status != Trip.Status.IN_PROGRESS:
             raise PlanningError("Inicia la ruta antes de completarla.")
+        if trip.stops.filter(status=RouteStop.Status.PENDING).exists():
+            raise PlanningError("Registra cada parada como entregada o no entregada antes de completar la ruta.")
         trip.status = Trip.Status.COMPLETED
         if trip.started_at is None:
             trip.started_at = timezone.now()
@@ -182,10 +213,6 @@ class TripLifecycleService:
         trip.save(update_fields=["status", "started_at", "completed_at", "updated_at"])
         failed_order_ids = trip.stops.filter(status=RouteStop.Status.NOT_DELIVERED, order_id__isnull=False).values_list("order_id", flat=True)
         trip.orders.exclude(id__in=failed_order_ids).exclude(status=Order.Status.CANCELED).update(status=Order.Status.DELIVERED)
-        trip.stops.filter(status=RouteStop.Status.PENDING).update(
-            status=RouteStop.Status.DELIVERED,
-            delivered_at=trip.completed_at,
-        )
         TripEvent.objects.create(trip=trip, recorded_by=recorded_by, note="Viaje completado y pedidos marcados como entregados.")
         return trip
 

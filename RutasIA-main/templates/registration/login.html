@@ -214,6 +214,19 @@
             font-size: 0.88rem;
         }
 
+        .success-box {
+            margin-bottom: 1rem;
+            padding: 0.7rem 0.85rem;
+            border: 1px solid #bbf7d0;
+            border-radius: 10px;
+            background: #f0fdf4;
+            color: #166534;
+            font-size: 0.88rem;
+        }
+
+        .signup-link { margin: 1rem 0 0; text-align: center; font-size: 0.9rem; color: var(--ink-soft); }
+        .signup-link a { color: var(--primary); font-weight: 650; text-decoration: none; }
+
         .login-footer {
             margin-top: 2rem;
             padding-top: 1rem;
@@ -288,6 +301,10 @@
                 </div>
                 {% endif %}
 
+                {% for message in messages %}
+                <div class="success-box">{{ message }}</div>
+                {% endfor %}
+
                 <form method="post">
                     {% csrf_token %}
                     <label>Usuario
@@ -298,6 +315,8 @@
                     </label>
                     <button type="submit" class="btn-submit">Iniciar sesion</button>
                 </form>
+
+                <p class="signup-link">¿Aun no tienes cuenta? <a href="{% url 'signup' %}">Crear cuenta de trabajo</a></p>
 
                 <p class="login-footer">Flamia · Sistema de logística offline-first</p>
             </div>

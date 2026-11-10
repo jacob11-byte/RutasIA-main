@@ -6,15 +6,17 @@ from logistics.presentation.serializers import _require_role
 
 ADMIN = UserProfile.Role.ADMIN
 SUPERVISOR = UserProfile.Role.SUPERVISOR
-OPERATOR = UserProfile.Role.OPERATOR
+SELLER = UserProfile.Role.SELLER
+DRIVER = UserProfile.Role.DRIVER
 WRITE_ROLES = {
     "api_users": (ADMIN,), "api_user_detail": (ADMIN,),
-    "api_departments": (ADMIN, SUPERVISOR), "api_stores": (ADMIN, SUPERVISOR),
+    "api_departments": (ADMIN, SUPERVISOR), "api_stores": (ADMIN, SUPERVISOR, SELLER),
+    "api_store_detail": (ADMIN, SUPERVISOR, SELLER),
     "api_products": (ADMIN, SUPERVISOR), "api_drivers": (ADMIN, SUPERVISOR),
-    "api_vehicles": (ADMIN, SUPERVISOR), "api_orders": (ADMIN, SUPERVISOR, OPERATOR),
-    "api_plan_trip": (ADMIN, SUPERVISOR), "api_trip_action": (ADMIN, SUPERVISOR),
-    "api_trip_event": (ADMIN, SUPERVISOR, OPERATOR), "api_route_stop": (ADMIN, SUPERVISOR, OPERATOR),
-    "api_payments": (ADMIN, SUPERVISOR, OPERATOR), "api_fuel_price": (ADMIN,),
+    "api_vehicles": (ADMIN, SUPERVISOR), "api_orders": (ADMIN, SUPERVISOR, SELLER),
+    "api_plan_trip": (ADMIN, SUPERVISOR), "api_trip_action": (ADMIN, SUPERVISOR, DRIVER),
+    "api_trip_event": (ADMIN, SUPERVISOR, DRIVER), "api_route_stop": (ADMIN, SUPERVISOR, DRIVER),
+    "api_payments": (ADMIN, SUPERVISOR, SELLER, DRIVER), "api_fuel_price": (ADMIN,),
     "api_order_action": (ADMIN, SUPERVISOR),
 }
 

@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from logistics.application.services import TripLifecycleService, TripPlanner
-from logistics.models import Department, MutationReceipt, Order, Payment, Product, RouteStop, Store, TripEvent, UserProfile, Vehicle
+from logistics.models import Department, Driver, MutationReceipt, Order, Payment, Product, RouteStop, Store, TripEvent, UserProfile, Vehicle
 
 
 class OfflineApiTests(TestCase):
@@ -85,11 +85,12 @@ class OfflineApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(Payment.objects.exists())
 
-    def test_operator_can_capture_delivery_without_changing_store_coordinates(self):
-        trip = TripPlanner.plan_trip(self.vehicle, Order.objects.filter(pk=self.order.pk))
+    def test_assigned_driver_can_capture_delivery_without_changing_store_coordinates(self):
+        driver = Driver.objects.create(user=self.user, name="Repartidor", license_number="GPS-01")
+        trip = TripPlanner.plan_trip(self.vehicle, Order.objects.filter(pk=self.order.pk), driver=driver)
         TripLifecycleService.start_trip(trip)
         stop = trip.stops.get()
-        self.user.profile.role = UserProfile.Role.OPERATOR
+        self.user.profile.role = UserProfile.Role.DRIVER
         self.user.profile.save()
         payload = {"status": "delivered", "delivery_latitude": 0, "delivery_longitude": 0,
                    "delivery_accuracy_m": 8, "delivery_captured_at": timezone.now().isoformat()}
@@ -129,6 +130,8 @@ class OfflineApiTests(TestCase):
         trip = TripPlanner.plan_trip(self.vehicle, Order.objects.filter(pk=self.order.pk))
         TripLifecycleService.start_trip(trip)
         stop = trip.stops.get()
+        stop.status = RouteStop.Status.DELIVERED
+        stop.save(update_fields=["status"])
         TripLifecycleService.complete_trip(trip)
         response = self.post(f"/api/trips/{trip.pk}/stops/{stop.pk}/", {"status": "not_delivered"})
         self.assertEqual(response.status_code, 400)
@@ -152,9 +155,9 @@ class OfflineApiTests(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertFalse(response.json()["ok"])
 
-    def test_operator_cannot_create_store(self):
-        self.user.profile.role = UserProfile.Role.OPERATOR
+    def test_seller_can_create_store_with_exact_location(self):
+        self.user.profile.role = UserProfile.Role.SELLER
         self.user.profile.save()
         response = self.post("/api/stores/", self.store_payload)
-        self.assertEqual(response.status_code, 403)
-        self.assertFalse(Store.objects.filter(name="Tienda GPS").exists())
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Store.objects.filter(name="Tienda GPS", created_by=self.user).exists())

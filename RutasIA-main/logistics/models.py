@@ -44,10 +44,11 @@ class UserProfile(models.Model):
     class Role(models.TextChoices):
         ADMIN = "admin", "Administrador"
         SUPERVISOR = "supervisor", "Supervisor"
-        OPERATOR = "operator", "Operador"
+        SELLER = "seller", "Vendedor/cobrador"
+        DRIVER = "driver", "Repartidor"
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.OPERATOR)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.SELLER)
 
     def __str__(self) -> str:
         return f"{self.user.username} ({self.get_role_display()})"
@@ -98,6 +99,13 @@ class RouteConnection(TimestampedModel):
 
 
 class Driver(TimestampedModel):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="driver_profile",
+    )
     name = models.CharField(max_length=120)
     phone = models.CharField(max_length=20, blank=True)
     license_number = models.CharField(max_length=30, unique=True)
@@ -145,6 +153,12 @@ class Store(TimestampedModel):
         GAS = "gas", "Gas"
         BOTH = "both", "Agua y gas"
 
+    class VisitFrequency(models.TextChoices):
+        ON_DEMAND = "on_demand", "Bajo pedido"
+        WEEKLY = "weekly", "Semanal"
+        BIWEEKLY = "biweekly", "Quincenal"
+        MONTHLY = "monthly", "Mensual"
+
     name = models.CharField(max_length=140)
     contact_name = models.CharField(max_length=120, blank=True)
     phone = models.CharField(max_length=20, blank=True)
@@ -153,11 +167,13 @@ class Store(TimestampedModel):
     address = models.CharField(max_length=220, blank=True)
     reference = models.CharField(max_length=220, blank=True)
     product_type = models.CharField(max_length=12, choices=ProductType.choices, default=ProductType.WATER)
+    visit_frequency = models.CharField(max_length=16, choices=VisitFrequency.choices, default=VisitFrequency.ON_DEMAND)
     department = models.ForeignKey(Department, on_delete=models.PROTECT, related_name="stores")
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
     location_accuracy_m = models.FloatField(null=True, blank=True)
     location_captured_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_stores")
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -219,6 +235,7 @@ class Order(TimestampedModel):
     priority = models.CharField(max_length=10, choices=Priority.choices, default=Priority.NORMAL)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     requested_for = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_orders")
 
     class Meta:
         ordering = ["-created_at"]

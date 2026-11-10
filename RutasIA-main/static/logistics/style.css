@@ -244,9 +244,14 @@ body {
     color: #1d4ed8;
 }
 
-.role-operator {
+.role-seller {
     background: #dcfce7;
     color: #166534;
+}
+
+.role-driver {
+    background: #ede9fe;
+    color: #6d28d9;
 }
 
 .sidebar .role-admin {
@@ -259,9 +264,14 @@ body {
     color: #7dd3fc;
 }
 
-.sidebar .role-operator {
+.sidebar .role-seller {
     background: rgba(34, 197, 94, 0.16);
     color: #86efac;
+}
+
+.sidebar .role-driver {
+    background: rgba(139, 92, 246, 0.18);
+    color: #c4b5fd;
 }
 
 .logout-form {

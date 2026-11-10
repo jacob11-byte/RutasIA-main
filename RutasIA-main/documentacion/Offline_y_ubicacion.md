@@ -2,14 +2,25 @@
 
 La captura y sincronización funcionan sin utilizar la simulación del mapa. La implementación del mapa, su proveedor y sus claves se conservan.
 
+## Trabajo del vendedor/cobrador
+
+1. Abrir Flamia con conexión, iniciar sesión y esperar a que aparezcan clientes y productos. Hacerlo en cada dispositivo y navegador que se usará durante la visita a tiendas.
+2. Frente al establecimiento, pulsar **Tomar ubicación actual de la tienda** y permitir la ubicación. Revisar coordenadas, precisión, municipio, dirección y frecuencia de visita antes de guardar. La dirección escrita puede completarse manualmente sin internet; el GPS no depende del mapa.
+3. Registrar el pedido de la tienda y sus productos. La tienda y el pedido quedan vinculados a la cuenta que los registró. El vendedor también puede registrar cobros autorizados.
+4. Sin red se pueden guardar tiendas, pedidos y cobros. Los nuevos registros aparecen con identificadores locales y permanecen en la cola de ese dispositivo hasta sincronizarse.
+
 ## Trabajo del repartidor
 
-1. Abrir Flamia con conexión, iniciar sesión y esperar a que aparezcan clientes, productos y rutas. Hacerlo en cada dispositivo y navegador que se usará durante el reparto.
-2. Para registrar una tienda, estar frente al establecimiento y pulsar **Tomar ubicación actual de la tienda**. Permitir la ubicación en el aviso del navegador. Revisar coordenadas, precisión, municipio y dirección antes de guardar. La dirección escrita puede completarse manualmente sin internet; el GPS no depende del geocodificador del mapa.
-3. Sin red se pueden guardar tiendas, pedidos de esas tiendas, cobros, resultados de paradas, acciones de rutas y registros de visita. Los nuevos clientes y pedidos aparecen en sus selectores con identificadores locales. Cada dispositivo conserva su propia cola; otro teléfono no tendrá esos cambios hasta sincronizarlos.
-4. En **Rutas**, usar **Registrar entrega con ubicación del repartidor**. Seleccionar ruta y entrega, tomar la ubicación estando en el lugar y guardar. La captura debe tener menos de cinco minutos al enviar el formulario. Se guarda por separado de las coordenadas del cliente, incluyendo precisión y fecha de captura. Puede permanecer pendiente varios días: se conserva la fecha capturada, aunque el servidor la reciba después.
-5. Al recuperar internet, mantener Flamia abierta. La sincronización se reintenta al recuperar red, volver a la aplicación y cada 30 segundos mientras esté abierta. También puede pulsarse **Sincronizar**. No depende de ejecución en segundo plano de iOS.
-6. Revisar **Operaciones pendientes en este dispositivo**. Un error de permisos, validación o sesión detiene el envío en ese punto para conservar el orden y sus dependencias. Iniciar sesión con la misma cuenta para continuar. Descartar es una decisión manual: no deshace un registro que el servidor ya haya recibido.
+1. Abrir Flamia con conexión e iniciar sesión con la cuenta enlazada a su ficha de repartidor. Sólo aparecerán las rutas que le fueron asignadas.
+2. En **Rutas**, iniciar la ruta y usar **Ir a la siguiente tienda**. El teléfono toma la ubicación actual del repartidor y abre la navegación hacia las coordenadas exactas de la siguiente tienda pendiente.
+3. Al llegar, usar **Registrar entrega con ubicación del repartidor**. La captura debe tener menos de cinco minutos al enviar el formulario. Se guarda separada de la ubicación fija de la tienda, con precisión y fecha de captura.
+4. Registrar cada parada como entregada o no entregada. La ruta no puede completarse mientras queden paradas pendientes.
+5. Sin red se pueden guardar resultados de paradas, acciones de rutas, registros de visita y cobros asociados a la ruta. La fecha GPS capturada se conserva aunque el servidor reciba la operación después.
+
+## Sincronización de ambos perfiles
+
+1. Al recuperar internet, mantener Flamia abierta. La sincronización se reintenta al recuperar red, volver a la aplicación y cada 30 segundos mientras esté abierta. También puede pulsarse **Sincronizar**. No depende de ejecución en segundo plano de iOS.
+2. Revisar **Operaciones pendientes en este dispositivo**. Un error de permisos, validación o sesión detiene el envío en ese punto para conservar el orden y sus dependencias. Iniciar sesión con la misma cuenta para continuar. Descartar es una decisión manual: no deshace un registro que el servidor ya haya recibido.
 
 Los saldos por tienda incluyen pedidos y cobros pendientes guardados en ese dispositivo. Los reportes y estadísticas corresponden a la última información del servidor; sincronizar antes de usarlos como cierre administrativo. La planificación de nuevas rutas requiere conexión y pedidos sincronizados. El mapa conserva sus dependencias externas y requiere internet para cargar cartografía o calcular nuevos recorridos.
 
@@ -29,7 +40,7 @@ La cola antigua de localStorage se conserva y puede descargarse desde el panel. 
 
 ## Despliegue
 
-La migración `0009` añade precisión y fecha de captura a clientes, coordenadas de entrega a paradas y comprobantes de operaciones para evitar duplicados. No altera coordenadas existentes. Los comandos de arranque de Render y Procfile verifican la configuracion con `check --deploy --fail-level ERROR` y aplican migraciones antes de arrancar Gunicorn. Deben configurarse DEBUG=False, SECRET_KEY segura, DATABASE_URL, ALLOWED_HOSTS y CSRF_TRUSTED_ORIGINS explicitos. Si el servicio usa comandos personalizados en su panel, actualizarlo o ejecutar `python manage.py migrate --noinput` antes de arrancar esta versión.
+La migración `0009` añade precisión y fecha de captura a clientes, coordenadas de entrega a paradas y comprobantes de operaciones para evitar duplicados. La migración `0012` separa vendedor/cobrador y repartidor, enlaza la cuenta del repartidor y conserva quién registró tiendas y pedidos. No alteran coordenadas existentes. Los comandos de arranque de Render y Procfile verifican la configuracion con `check --deploy --fail-level ERROR` y aplican migraciones antes de arrancar Gunicorn. Deben configurarse DEBUG=False, SECRET_KEY segura, DATABASE_URL, ALLOWED_HOSTS y CSRF_TRUSTED_ORIGINS explicitos. Si el servicio usa comandos personalizados en su panel, actualizarlo o ejecutar `python manage.py migrate --noinput` antes de arrancar esta versión.
 
 El build debe ejecutar `python manage.py collectstatic --noinput` para incluir `offline.js`, `location.js`, `business.js` y el service worker actualizado. Recargar con conexión después del despliegue y comprobar que la nueva versión se ha instalado antes de salir a repartir. No borrar comprobantes de operaciones mientras existan dispositivos que puedan reenviar solicitudes antiguas.
 

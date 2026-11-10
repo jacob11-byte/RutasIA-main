@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import (
     Department,
+    Driver,
     Order,
     OrderItem,
     Payment,
@@ -11,8 +12,23 @@ from .models import (
     Trip,
     TripEvent,
     TripOrder,
+    UserProfile,
     Vehicle,
 )
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "role")
+    list_filter = ("role",)
+    search_fields = ("user__username", "user__first_name", "user__last_name")
+
+
+@admin.register(Driver)
+class DriverAdmin(admin.ModelAdmin):
+    list_display = ("name", "user", "license_number", "phone", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("name", "license_number", "user__username")
 
 
 @admin.register(Department)

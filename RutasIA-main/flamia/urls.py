@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import FileResponse
 from django.urls import include, path
+from logistics.presentation.views import signup
 
 
 def service_worker(request):
@@ -42,6 +43,7 @@ def manifest(request):
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("accounts/signup/", signup, name="signup"),
     path("accounts/", include("django.contrib.auth.urls")),
     path("manifest.json", manifest, name="manifest"),
     path("service-worker.js", service_worker, name="service-worker"),

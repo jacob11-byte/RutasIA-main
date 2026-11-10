@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import HttpRequest, HttpResponseNotAllowed
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
@@ -31,6 +32,7 @@ from logistics.models import (
     UserProfile,
     Vehicle,
 )
+from logistics.forms import EmployeeSignupForm
 from logistics.presentation.idempotency import idempotent
 from logistics.presentation.permissions import role_policy
 from logistics.presentation.validation import decimal_field, required_text
@@ -59,6 +61,47 @@ from logistics.presentation.serializers import (
 )
 
 
+@require_http_methods(["GET", "POST"])
+def signup(request: HttpRequest):
+    if request.user.is_authenticated:
+        return redirect("index")
+    form = EmployeeSignupForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            user = form.save(commit=False)
+            user.is_active = False
+            user.save()
+            role = form.cleaned_data["role"]
+            UserProfile.objects.create(user=user, role=role)
+            if role == UserProfile.Role.DRIVER:
+                Driver.objects.create(
+                    user=user,
+                    name=user.get_full_name() or user.username,
+                    phone=form.cleaned_data.get("phone", "").strip(),
+                    license_number=form.cleaned_data["license_number"].strip(),
+                    is_active=False,
+                )
+        messages.success(request, "Cuenta creada. Un administrador debe aprobarla antes de que puedas ingresar.")
+        return redirect("login")
+    return render(request, "registration/signup.html", {"form": form})
+
+
+def _assigned_driver(request: HttpRequest) -> Driver | None:
+    try:
+        return request.user.driver_profile
+    except Driver.DoesNotExist:
+        return None
+
+
+def _require_assigned_trip(request: HttpRequest, trip: Trip):
+    if _get_role(request) != UserProfile.Role.DRIVER:
+        return None
+    driver = _assigned_driver(request)
+    if driver is None or trip.driver_id != driver.pk:
+        return _error("Esta ruta no esta asignada a tu cuenta de repartidor.", 403)
+    return None
+
+
 @ensure_csrf_cookie
 @login_required
 @require_GET
@@ -77,12 +120,14 @@ def index(request: HttpRequest):
 @ensure_csrf_cookie
 def api_me(request: HttpRequest):
     user = request.user
+    driver = _assigned_driver(request)
     return _ok({
         "user": {
             "id": user.id,
             "username": user.username,
             "full_name": user.get_full_name(),
             "role": _get_role(request),
+            "driver_id": driver.pk if driver else None,
         }
     })
 
@@ -100,7 +145,7 @@ def api_users(request: HttpRequest):
         users = User.objects.select_related("profile").all().order_by("username")
         result = []
         for u in users:
-            role = UserProfile.Role.OPERATOR
+            role = UserProfile.Role.SELLER
             try:
                 role = u.profile.role
             except Exception:
@@ -121,7 +166,7 @@ def api_users(request: HttpRequest):
         payload = _parse_json(request)
         username = required_text(payload["username"], "Usuario")
         password = str(payload["password"])
-        role = payload.get("role", UserProfile.Role.OPERATOR)
+        role = payload.get("role", UserProfile.Role.SELLER)
         first_name = str(payload.get("first_name", "")).strip()
         last_name = str(payload.get("last_name", "")).strip()
         email = str(payload.get("email", "")).strip()
@@ -140,6 +185,15 @@ def api_users(request: HttpRequest):
             email=email,
         )
         UserProfile.objects.create(user=user, role=role)
+        if role == UserProfile.Role.DRIVER:
+            license_number = required_text(payload.get("license_number", ""), "Licencia del repartidor")
+            Driver.objects.create(
+                user=user,
+                name=user.get_full_name() or user.username,
+                phone=str(payload.get("phone", "")).strip(),
+                license_number=license_number,
+                is_active=user.is_active,
+            )
         return _ok({
             "user": {
                 "id": user.id,
@@ -172,9 +226,12 @@ def api_user_detail(request: HttpRequest, user_id: int):
             return _error("No puedes retirar tu propio acceso administrativo.")
         if user.is_superuser and (role != UserProfile.Role.ADMIN or not active):
             return _error("La cuenta superadministradora debe conservar su acceso.")
+        if role == UserProfile.Role.DRIVER and not Driver.objects.filter(user=user).exists():
+            return _error("Para asignar el rol Repartidor, crea la cuenta desde el registro con su licencia.")
         UserProfile.objects.update_or_create(user=user, defaults={"role": role})
         user.is_active = active
         user.save(update_fields=["is_active"])
+        Driver.objects.filter(user=user).update(is_active=active)
         return _ok({"user": {"id": user.pk, "username": user.username, "role": role, "is_active": active}})
     except (KeyError, PlanningError) as exc:
         return _error(str(exc))
@@ -185,7 +242,8 @@ def api_user_detail(request: HttpRequest, user_id: int):
 def api_dashboard(request: HttpRequest):
     date_from = request.GET.get("date_from")
     date_to = request.GET.get("date_to")
-    return _ok({"dashboard": _dashboard_payload(date_from=date_from, date_to=date_to)})
+    driver_user_id = request.user.pk if _get_role(request) == UserProfile.Role.DRIVER else None
+    return _ok({"dashboard": _dashboard_payload(date_from=date_from, date_to=date_to, driver_user_id=driver_user_id)})
 
 
 @login_required
@@ -253,10 +311,12 @@ def api_connections(request: HttpRequest):
 @idempotent
 def api_stores(request: HttpRequest):
     if request.method == "GET":
-        stores = Store.objects.select_related("department").all()
+        stores = Store.objects.select_related("department", "created_by").all()
+        if _get_role(request) == UserProfile.Role.DRIVER:
+            stores = stores.filter(orders__trips__driver__user=request.user).distinct()
         return _ok({"stores": [_serialize_store(store) for store in stores]})
 
-    perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR)
+    perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR, UserProfile.Role.SELLER)
     if perm_error:
         return perm_error
 
@@ -266,6 +326,9 @@ def api_stores(request: HttpRequest):
         product_type = payload.get("product_type", Store.ProductType.WATER)
         if product_type not in [choice[0] for choice in Store.ProductType.choices]:
             return _error("Tipo de producto invalido.")
+        visit_frequency = payload.get("visit_frequency", Store.VisitFrequency.ON_DEMAND)
+        if visit_frequency not in Store.VisitFrequency.values:
+            return _error("Frecuencia de visita invalida.")
 
         latitude, longitude, accuracy, captured = parse_location(payload, required=True)
         store = Store.objects.create(
@@ -277,11 +340,13 @@ def api_stores(request: HttpRequest):
             address=str(payload.get("address", "")).strip(),
             reference=str(payload.get("reference", "")).strip(),
             product_type=product_type,
+            visit_frequency=visit_frequency,
             department=department,
             latitude=latitude,
             longitude=longitude,
             location_accuracy_m=accuracy,
             location_captured_at=captured,
+            created_by=request.user,
             is_active=bool(payload.get("is_active", True)),
         )
         return _ok({"store": _serialize_store(store)}, status=201)
@@ -290,6 +355,41 @@ def api_stores(request: HttpRequest):
     except Department.DoesNotExist:
         return _error("Zona/departamento invalido.")
     except Exception as exc:
+        return _error(str(exc))
+
+
+@login_required
+@require_http_methods(["POST"])
+@role_policy
+@idempotent
+def api_store_detail(request: HttpRequest, store_id: int):
+    store = get_object_or_404(Store.objects.select_for_update().select_related("department", "created_by"), pk=store_id)
+    try:
+        payload = _parse_json(request)
+        if "department_id" in payload:
+            store.department = Department.objects.get(pk=payload["department_id"])
+        product_type = payload.get("product_type", store.product_type)
+        visit_frequency = payload.get("visit_frequency", store.visit_frequency)
+        if product_type not in Store.ProductType.values or visit_frequency not in Store.VisitFrequency.values:
+            return _error("Tipo de producto o frecuencia invalida.")
+        location = parse_location(payload)
+        if location:
+            store.latitude, store.longitude, store.location_accuracy_m, store.location_captured_at = location
+        for field in ("name", "contact_name", "phone", "municipality", "neighborhood", "address", "reference"):
+            if field in payload:
+                value = str(payload[field]).strip()
+                if field == "name" and not value:
+                    return _error("El nombre de la tienda es obligatorio.")
+                setattr(store, field, value)
+        store.product_type = product_type
+        store.visit_frequency = visit_frequency
+        if "is_active" in payload:
+            store.is_active = bool(payload["is_active"])
+        store.save()
+        return _ok({"store": _serialize_store(store)})
+    except Department.DoesNotExist:
+        return _error("Zona/departamento invalido.")
+    except PlanningError as exc:
         return _error(str(exc))
 
 
@@ -335,7 +435,9 @@ def api_products(request: HttpRequest):
 @idempotent
 def api_drivers(request: HttpRequest):
     if request.method == "GET":
-        drivers = Driver.objects.all()
+        drivers = Driver.objects.select_related("user").all()
+        if _get_role(request) == UserProfile.Role.DRIVER:
+            drivers = drivers.filter(user=request.user)
         return _ok({"drivers": [_serialize_driver(d) for d in drivers]})
 
     perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR)
@@ -412,8 +514,11 @@ def api_orders(request: HttpRequest):
         orders = (
             Order.objects.select_related("origin", "destination", "store")
             .prefetch_related("items__product", "payments", "payment_allocations")
+            .select_related("created_by")
             .all()
         )
+        if _get_role(request) == UserProfile.Role.DRIVER:
+            orders = orders.filter(trips__driver__user=request.user).distinct()
         status_filter = request.GET.get("status")
         origin_filter = request.GET.get("origin_id")
         destination_filter = request.GET.get("destination_id")
@@ -425,7 +530,7 @@ def api_orders(request: HttpRequest):
             orders = orders.filter(destination_id=destination_filter)
         return _ok({"orders": [_serialize_order(o) for o in orders]})
 
-    perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR, UserProfile.Role.OPERATOR)
+    perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR, UserProfile.Role.SELLER)
     if perm_error:
         return perm_error
 
@@ -457,6 +562,7 @@ def api_orders(request: HttpRequest):
             package_count=int(payload.get("package_count", 1)),
             priority=payload.get("priority", Order.Priority.NORMAL),
             requested_for=operation_time(payload.get("occurred_at")),
+            created_by=request.user,
             status=Order.Status.PENDING,
         )
         if items_payload:
@@ -534,6 +640,11 @@ def api_trips(request: HttpRequest):
         .prefetch_related("orders__origin", "orders__destination", "orders__store", "orders__items__product", "orders__payments", "orders__payment_allocations", "stops__order", "stops__store", "events")
         .all()
     )
+    role = _get_role(request)
+    if role == UserProfile.Role.DRIVER:
+        trips = trips.filter(driver__user=request.user)
+    elif role == UserProfile.Role.SELLER:
+        trips = trips.none()
     status_filter = request.GET.get("status")
     vehicle_filter = request.GET.get("vehicle_id")
     date_from = request.GET.get("date_from")
@@ -609,9 +720,12 @@ def api_trip_action(request: HttpRequest, trip_id: int):
         ),
         pk=trip_id,
     )
-    perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR)
+    perm_error = _require_role(request, UserProfile.Role.ADMIN, UserProfile.Role.SUPERVISOR, UserProfile.Role.DRIVER)
     if perm_error:
         return perm_error
+    assignment_error = _require_assigned_trip(request, trip)
+    if assignment_error:
+        return assignment_error
 
     try:
         payload = _parse_json(request)
@@ -621,6 +735,8 @@ def api_trip_action(request: HttpRequest, trip_id: int):
         elif action == "complete":
             TripLifecycleService.complete_trip(trip, recorded_by=request.user)
         elif action == "cancel":
+            if _get_role(request) == UserProfile.Role.DRIVER:
+                return _error("El repartidor no puede cancelar una ruta; solicita la cancelacion al supervisor.", 403)
             TripLifecycleService.cancel_trip(trip, recorded_by=request.user)
         else:
             return _error("Acción inválida. Usa: start, complete o cancel.")
@@ -642,6 +758,9 @@ def api_trip_action(request: HttpRequest, trip_id: int):
 @idempotent
 def api_trip_event(request: HttpRequest, trip_id: int):
     trip = get_object_or_404(Trip, pk=trip_id)
+    assignment_error = _require_assigned_trip(request, trip)
+    if assignment_error:
+        return assignment_error
     try:
         payload = _parse_json(request)
         note = str(payload.get("note", ""))
@@ -661,6 +780,9 @@ def api_trip_event(request: HttpRequest, trip_id: int):
 def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
     get_object_or_404(Trip.objects.select_for_update(), pk=trip_id)
     stop = get_object_or_404(RouteStop.objects.select_related("trip", "order", "store"), pk=stop_id, trip_id=trip_id)
+    assignment_error = _require_assigned_trip(request, stop.trip)
+    if assignment_error:
+        return assignment_error
     try:
         payload = _parse_json(request)
         status = payload.get("status", RouteStop.Status.DELIVERED)
@@ -669,6 +791,8 @@ def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
         if stop.trip.status != Trip.Status.IN_PROGRESS:
             return _error("Solo se registran resultados de entrega en una ruta en progreso. Inicia la ruta antes de registrar la visita.")
         location = parse_location(payload, prefix="delivery_")
+        if _get_role(request) == UserProfile.Role.DRIVER and location is None:
+            return _error("El repartidor debe capturar su ubicacion actual al registrar la entrega.")
         if location:
             stop.delivery_latitude, stop.delivery_longitude, stop.delivery_accuracy_m, stop.delivery_captured_at = location
         if stop.status == RouteStop.Status.DELIVERED and status != stop.status:
@@ -702,13 +826,25 @@ def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
 def api_payments(request: HttpRequest):
     if request.method == "GET":
         payments = Payment.objects.select_related("store", "order", "trip", "driver", "recorded_by").prefetch_related("allocations").all()
+        if _get_role(request) == UserProfile.Role.DRIVER:
+            payments = payments.filter(Q(trip__driver__user=request.user) | Q(recorded_by=request.user)).distinct()
         store_id = request.GET.get("store_id")
         if store_id:
             payments = payments.filter(store_id=store_id)
         return _ok({"payments": [_serialize_payment(payment) for payment in payments]})
 
     try:
-        payment, duplicate = record_collection(_parse_json(request), request.user)
+        payload = _parse_json(request)
+        if _get_role(request) == UserProfile.Role.DRIVER:
+            driver = _assigned_driver(request)
+            if driver is None or not payload.get("trip_id"):
+                return _error("El cobro del repartidor debe estar asociado a una de sus rutas.")
+            trip = get_object_or_404(Trip, pk=payload["trip_id"])
+            assignment_error = _require_assigned_trip(request, trip)
+            if assignment_error:
+                return assignment_error
+            payload["driver_id"] = driver.pk
+        payment, duplicate = record_collection(payload, request.user)
         return _ok({"payment": _serialize_payment(payment), "duplicate": duplicate}, status=200 if duplicate else 201)
     except (PlanningError, KeyError) as exc:
         return _error(str(exc))
@@ -719,6 +855,8 @@ def api_payments(request: HttpRequest):
 @require_http_methods(["GET"])
 def api_balances(request: HttpRequest):
     orders = Order.objects.select_related("store").prefetch_related("items", "payments", "payment_allocations").filter(store__isnull=False).exclude(status=Order.Status.CANCELED)
+    if _get_role(request) == UserProfile.Role.DRIVER:
+        orders = orders.filter(trips__driver__user=request.user).distinct()
     balances: dict[int, dict] = {}
     for order in orders:
         store = order.store
@@ -761,6 +899,10 @@ def api_reports(request: HttpRequest):
     orders = Order.objects.prefetch_related("items", "payments", "payment_allocations").exclude(status=Order.Status.CANCELED)
     trips = Trip.objects.all()
     payments = Payment.objects.all()
+    if _get_role(request) == UserProfile.Role.DRIVER:
+        orders = orders.filter(trips__driver__user=request.user).distinct()
+        trips = trips.filter(driver__user=request.user)
+        payments = payments.filter(Q(trip__driver__user=request.user) | Q(recorded_by=request.user)).distinct()
     if date_from:
         orders = orders.filter(requested_for__date__gte=date_from)
         trips = trips.filter(created_at__date__gte=date_from)

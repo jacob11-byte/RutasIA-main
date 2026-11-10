@@ -69,7 +69,7 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         try:
             self.page.wait_for_function("typeof state !== 'undefined' && state.currentUser !== null", timeout=15000)
             self.page.wait_for_function("!!navigator.serviceWorker.controller", timeout=15000)
-            self.page.evaluate("async () => { for (let i=0;i<150;i++) { if (await caches.open('flamia-shell-v4').then(cache => cache.match('/'))) return; await new Promise(r => setTimeout(r,100)); } throw new Error('Offline shell not ready'); }")
+            self.page.evaluate("async () => { for (let i=0;i<150;i++) { if (await caches.open('flamia-shell-v5').then(cache => cache.match('/'))) return; await new Promise(r => setTimeout(r,100)); } throw new Error('Offline shell not ready'); }")
         except Exception:
             print("Browser diagnostic:", self.page.url, self.errors, self.page.locator("body").inner_text()[-1000:], flush=True)
             raise
@@ -253,7 +253,7 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         self.user.profile.role = "admin"
         self.user.profile.save()
         other = User.objects.create_user("usuario-nuevo")
-        UserProfile.objects.create(user=other, role="operator")
+        UserProfile.objects.create(user=other, role="seller")
         self.page.evaluate("reloadAll()")
         self.tab("users")
         self.page.locator("#access-user").select_option(str(other.pk))

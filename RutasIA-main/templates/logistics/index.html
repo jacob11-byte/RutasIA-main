@@ -261,6 +261,14 @@
                                     <option value="both">Agua y gas</option>
                                 </select>
                             </label>
+                            <label>Frecuencia de visita
+                                <select name="visit_frequency">
+                                    <option value="on_demand">Bajo pedido</option>
+                                    <option value="weekly">Semanal</option>
+                                    <option value="biweekly">Quincenal</option>
+                                    <option value="monthly">Mensual</option>
+                                </select>
+                            </label>
                             <label>Direccion
                                 <input name="address" placeholder="Direccion o sector">
                             </label>
@@ -282,7 +290,8 @@
                                 <input type="checkbox" name="is_active" checked>
                                 Tienda activa
                             </label>
-                            <button type="submit">Guardar tienda</button>
+                            <button type="submit" id="store-submit">Guardar tienda</button>
+                            <button type="button" class="btn-small btn-neutral" id="btn-cancel-store-edit" style="display:none">Cancelar edicion</button>
                         </form>
                     </article>
 
@@ -294,12 +303,14 @@
                                     <th>Tienda</th>
                                     <th>Zona</th>
                                     <th>Producto</th>
+                                    <th>Frecuencia</th>
                                     <th>Telefono</th>
                                     <th>Municipio</th>
                                     <th>Colonia/comunidad</th>
                                     <th>GPS</th>
                                     <th>Estado</th>
                                     <th>Mapa</th>
+                                    <th>Editar</th>
                                 </tr>
                             </thead>
                             <tbody id="stores-body"></tbody>
@@ -497,6 +508,9 @@
                                 <select name="order_id" id="payment-order">
                                     <option value="">Sin pedido especifico</option>
                                 </select>
+                            </label>
+                            <label>Ruta asociada
+                                <select name="trip_id" id="payment-trip"><option value="">Cobro fuera de ruta</option></select>
                             </label>
                             <label>Repartidor que recibe el cobro
                                 <select name="driver_id" id="payment-driver"><option value="">Cobro en caja / sin repartidor</option></select>
@@ -737,6 +751,7 @@
                         </div>
                     </div>
                     <div class="gps-sim-controls">
+                        <button type="button" id="btn-navigate-next" class="btn-small" style="display:none">Ir a la siguiente tienda</button>
                         <button type="button" id="btn-start-gps" class="btn-small">Simular GPS</button>
                         <button type="button" id="btn-sim-delivery" class="btn-small btn-neutral">Simular entrega</button>
                         <button type="button" id="btn-stop-gps" class="btn-small btn-danger" style="display:none">Detener simulacion</button>
@@ -811,9 +826,16 @@
                             <label>Email
                                 <input name="email" type="email" placeholder="juan@empresa.com">
                             </label>
+                            <label>Telefono
+                                <input name="phone" placeholder="5555-1234">
+                            </label>
+                            <label>Licencia (si es repartidor)
+                                <input name="license_number" placeholder="L-12345678">
+                            </label>
                             <label>Rol
                                 <select name="role">
-                                    <option value="operator">Operador</option>
+                                    <option value="seller">Vendedor/cobrador</option>
+                                    <option value="driver">Repartidor</option>
                                     <option value="supervisor">Supervisor</option>
                                     <option value="admin">Administrador</option>
                                 </select>
@@ -826,7 +848,7 @@
                         <h3>Actualizar rol y acceso</h3>
                         <form id="user-access-form">
                             <label>Usuario <select name="user_id" id="access-user" required></select></label>
-                            <label>Rol <select name="role"><option value="operator">Operador</option><option value="supervisor">Supervisor</option><option value="admin">Administrador</option></select></label>
+                            <label>Rol <select name="role"><option value="seller">Vendedor/cobrador</option><option value="driver">Repartidor</option><option value="supervisor">Supervisor</option><option value="admin">Administrador</option></select></label>
                             <label class="inline"><input type="checkbox" name="is_active" checked> Cuenta activa</label>
                             <button type="submit">Guardar acceso</button>
                         </form>

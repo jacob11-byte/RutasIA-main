@@ -14,7 +14,7 @@ Flamia resuelve el problema de organizar rutas de reparto, entregas y cobros par
 - Visualiza la ruta sobre un mapa vectorial con **MapLibre GL JS** y traza el trazado real por carreteras via **OpenRouteService**.
 - Gestiona el ciclo de vida completo de un viaje: planificación → en progreso → completado / cancelado.
 - Calcula costos estimados de combustible (GTQ/galón) y costo por kilómetro del vehículo.
-- Controla acceso por roles: Administrador, Supervisor y Operador.
+- Controla acceso por roles: Administrador, Supervisor, Vendedor/cobrador y Repartidor. Desde el login se puede solicitar una cuenta operativa, sujeta a aprobación administrativa.
 
 ---
 
@@ -272,12 +272,12 @@ El código dentro de `logistics/` está organizado en cuatro capas con responsab
 | `Department` | Departamento de Guatemala con codigo, nombre y coordenadas GPS. |
 | `RouteConnection` | Conexion vial entre dos departamentos con distancia en km (puede ser bidireccional). |
 | `Vehicle` | Vehiculo con placa, modelo, capacidad, eficiencia de combustible y costo por km. |
-| `Driver` | Conductor con nombre, telefono y numero de licencia. |
+| `Driver` | Repartidor enlazado opcionalmente a una cuenta, con nombre, teléfono y licencia. |
 | `Order` | Pedido de envio con origen, destino, peso, prioridad y estado. |
 | `Trip` | Viaje planificado que agrupa pedidos, calcula ruta y registra costos. |
 | `FuelPrice` | Singleton con precios de combustible (regular, super, diesel) en GTQ/galón. |
 | `TripEvent` | Bitacora de eventos asociados a un viaje (inicio, completado, notas). |
-| `UserProfile` | Extension de `User` con rol (admin / supervisor / operador). |
+| `UserProfile` | Extensión de `User` con rol (admin / supervisor / seller / driver). |
 
 ---
 

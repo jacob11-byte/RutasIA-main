@@ -101,6 +101,7 @@ function initDeliveryLocation() {
     document.getElementById("delivery-trip").addEventListener("change", renderDeliveryStops);
     const button = document.getElementById("btn-delivery-gps");
     const status = document.getElementById("delivery-gps-status");
+    document.getElementById("btn-navigate-next").addEventListener("click", navigateToNextStore);
     button.addEventListener("click", async () => {
         button.disabled = true;
         deliveryLocationCapture = null;
@@ -154,4 +155,38 @@ function initDeliveryLocation() {
             event.preventDefault(); showToast("Conectate a internet para cerrar sesion de forma segura.", true);
         } else if (offlinePendingCount && !confirm("Hay operaciones pendientes en este dispositivo. Solo esta cuenta podra sincronizarlas al volver a ingresar. ¿Cerrar sesion?")) event.preventDefault();
     });
+}
+
+async function navigateToNextStore() {
+    const trip = state.trips.find(row => row.id === selectedMapTripId)
+        || state.trips.find(row => row.status === "in_progress")
+        || state.trips.find(row => row.status === "planned");
+    if (!trip) {
+        showToast("No tienes una ruta activa o seleccionada.", true);
+        return;
+    }
+    const stop = [...(trip.stops || [])]
+        .sort((a, b) => a.sequence - b.sequence)
+        .find(row => row.status === "pending" && row.latitude != null && row.longitude != null);
+    if (!stop) {
+        showToast("La ruta no tiene una parada pendiente con ubicacion valida.", true);
+        return;
+    }
+    const navigationWindow = window.open("about:blank", "_blank");
+    try {
+        showToast("Obteniendo tu ubicacion para abrir la navegacion...");
+        const current = await captureDeviceLocation();
+        const params = new URLSearchParams({
+            api: "1",
+            origin: `${current.latitude},${current.longitude}`,
+            destination: `${stop.latitude},${stop.longitude}`,
+            travelmode: "driving",
+        });
+        const url = `https://www.google.com/maps/dir/?${params}`;
+        if (navigationWindow) navigationWindow.location.href = url;
+        else window.location.href = url;
+    } catch (error) {
+        if (navigationWindow) navigationWindow.close();
+        showToast(error.message, true);
+    }
 }

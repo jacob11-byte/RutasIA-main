@@ -50,7 +50,7 @@ def _get_role(request: HttpRequest) -> str:
     try:
         return request.user.profile.role
     except Exception:
-        return UserProfile.Role.OPERATOR
+        return UserProfile.Role.SELLER
 
 
 def _require_role(request: HttpRequest, *allowed_roles: str) -> JsonResponse | None:
@@ -72,6 +72,7 @@ def _serialize_department(department: Department) -> dict:
 def _serialize_driver(driver: Driver) -> dict:
     return {
         "id": driver.id,
+        "user_id": driver.user_id,
         "name": driver.name,
         "phone": driver.phone,
         "license_number": driver.license_number,
@@ -107,12 +108,14 @@ def _serialize_store(store: Store) -> dict:
         "address": store.address,
         "reference": store.reference,
         "product_type": store.product_type,
+        "visit_frequency": store.visit_frequency,
         "department_id": store.department_id,
         "department_name": store.department.name,
         "latitude": float(store.latitude),
         "longitude": float(store.longitude),
         "location_accuracy_m": store.location_accuracy_m,
         "location_captured_at": store.location_captured_at.isoformat() if store.location_captured_at else None,
+        "created_by_name": store.created_by.get_full_name() or store.created_by.username if store.created_by else None,
         "is_active": store.is_active,
         "balance_due": _as_float(balance_due) if balance_due is not None else 0,
     }
@@ -163,6 +166,7 @@ def _serialize_order(order: Order) -> dict:
         "priority": order.priority,
         "status": order.status,
         "requested_for": order.requested_for.isoformat(),
+        "created_by_name": order.created_by.get_full_name() or order.created_by.username if order.created_by else None,
         "created_at": order.created_at.isoformat(),
         "items": [_serialize_order_item(item) for item in order.items.all()],
         "total_amount": _as_float(total_amount),
@@ -253,12 +257,14 @@ def _serialize_trip(trip: Trip) -> dict:
     }
 
 
-def _dashboard_payload(date_from=None, date_to=None) -> dict:
-    from django.db.models import Count, Sum
+def _dashboard_payload(date_from=None, date_to=None, driver_user_id=None) -> dict:
+    from django.db.models import Count, Q, Sum
     from django.utils import timezone as tz
     from datetime import timedelta
 
     trips = Trip.objects.all()
+    if driver_user_id:
+        trips = trips.filter(driver__user_id=driver_user_id)
     if date_from:
         trips = trips.filter(created_at__date__gte=date_from)
     if date_to:
@@ -274,7 +280,7 @@ def _dashboard_payload(date_from=None, date_to=None) -> dict:
         trips.values("status").annotate(total=Count("id")).order_by("status")
     )
     vehicle_activity = list(
-        Vehicle.objects.annotate(total_trips=Count("trips"))
+        Vehicle.objects.filter(trips__in=trips).annotate(total_trips=Count("trips", filter=Q(trips__in=trips)))
         .order_by("-total_trips", "plate")
         .values("plate", "total_trips")[:6]
     )
@@ -291,12 +297,15 @@ def _dashboard_payload(date_from=None, date_to=None) -> dict:
         )
 
     from logistics.models import Order as _Order
+    orders = _Order.objects.all()
+    if driver_user_id:
+        orders = orders.filter(trips__driver__user_id=driver_user_id).distinct()
     return {
         "summary": {
             "total_trips": aggregates["total_trips"] or 0,
             "active_trips": trips.filter(status__in=[Trip.Status.PLANNED, Trip.Status.IN_PROGRESS]).count(),
-            "pending_orders": _Order.objects.filter(status=_Order.Status.PENDING).count(),
-            "delivered_orders": _Order.objects.filter(status=_Order.Status.DELIVERED).count(),
+            "pending_orders": orders.filter(status=_Order.Status.PENDING).count(),
+            "delivered_orders": orders.filter(status=_Order.Status.DELIVERED).count(),
             "total_cost": _as_float(aggregates["total_cost"]),
             "total_distance_km": _as_float(aggregates["total_distance"]),
         },
