@@ -11,7 +11,7 @@ Sistema web para reparto de agua purificada o gas en Guatemala. Permite registra
 Flamia resuelve el problema de organizar rutas de reparto, entregas y cobros para negocios de agua purificada o gas, conservando la optimización de rutas entre zonas/departamentos y agregando clientes con ubicación GPS. El sistema:
 
 - Calcula rutas óptimas usando el algoritmo de **Dijkstra** (grafo de distancias viales) o **A\*** (con heurística Haversine).
-- Visualiza la ruta sobre un mapa vectorial con **MapLibre GL JS** y traza el trazado real por carreteras via **OpenRouteService**.
+- Visualiza el recorrido vial con **Google Maps**, navegación giro a giro, marcador GPS del camión y confirmación de llegada mediante geocerca.
 - Gestiona el ciclo de vida completo de un viaje: planificación → en progreso → completado / cancelado.
 - Calcula costos estimados de combustible (GTQ/galón) y costo por kilómetro del vehículo.
 - Controla acceso por roles: Administrador, Supervisor, Vendedor/cobrador y Repartidor. Desde el login se puede solicitar una cuenta operativa, sujeta a aprobación administrativa.
@@ -28,8 +28,8 @@ Flamia resuelve el problema de organizar rutas de reparto, entregas y cobros par
 | Base de datos | PostgreSQL (Neon serverless) |
 | ORM | Django ORM + Django Cache Framework |
 | Frontend | Vanilla JavaScript ES2022 |
-| Mapa | MapLibre GL JS, OpenFreeMap (estilo Liberty — vector tiles) |
-| Ruteo por carreteras | OpenRouteService API (preference=fastest) |
+| Mapa | Google Maps JavaScript API |
+| Ruteo por carreteras | Google Maps Routes/Directions |
 | Ruteo fallback | OSRM (Open Source Routing Machine) |
 | Algoritmos | Dijkstra (camino más corto), A* con heurística Haversine |
 | Deploy | Render.com (web service) |

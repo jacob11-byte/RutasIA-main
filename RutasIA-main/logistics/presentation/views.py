@@ -7,7 +7,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import ProtectedError, Q, Sum
 from django.http import HttpRequest, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -37,8 +38,10 @@ from logistics.presentation.idempotency import idempotent
 from logistics.presentation.permissions import role_policy
 from logistics.presentation.validation import decimal_field, required_text
 from logistics.application.collections import record_collection, operation_time
+from logistics.application.deletion import DELETERS
 from logistics.presentation.location import parse_location
 from logistics.domain.exceptions import PlanningError
+from logistics.domain.services import haversine_km
 from logistics.application.services import TripLifecycleService, TripPlanner
 from logistics.presentation.serializers import (
     _as_float,
@@ -142,7 +145,7 @@ def api_users(request: HttpRequest):
         return perm_error
 
     if request.method == "GET":
-        users = User.objects.select_related("profile").all().order_by("username")
+        users = User.objects.select_related("profile").all().order_by("is_active", "username")
         result = []
         for u in users:
             role = UserProfile.Role.SELLER
@@ -633,6 +636,25 @@ def api_order_action(request: HttpRequest, order_id: int):
 
 
 @login_required
+@require_http_methods(["POST"])
+@role_policy
+@idempotent
+def api_delete(request: HttpRequest, kind: str, record_id: int):
+    deleter = DELETERS.get(kind)
+    if deleter is None:
+        return _error("Este tipo de registro no se puede eliminar.", 404)
+    try:
+        deleter(record_id)
+    except ObjectDoesNotExist:
+        return _error("El registro ya no existe.", 404)
+    except PlanningError as exc:
+        return _error(str(exc))
+    except ProtectedError:
+        return _error("El registro tiene datos relacionados y no se puede eliminar.")
+    return _ok({"deleted": {"kind": kind, "id": record_id}})
+
+
+@login_required
 @require_http_methods(["GET"])
 def api_trips(request: HttpRequest):
     trips = (
@@ -793,6 +815,20 @@ def api_route_stop(request: HttpRequest, trip_id: int, stop_id: int):
         location = parse_location(payload, prefix="delivery_")
         if _get_role(request) == UserProfile.Role.DRIVER and location is None:
             return _error("El repartidor debe capturar su ubicacion actual al registrar la entrega.")
+        if _get_role(request) == UserProfile.Role.DRIVER and status == RouteStop.Status.DELIVERED:
+            if stop.latitude is None or stop.longitude is None:
+                return _error("La tienda no tiene una ubicacion GPS valida para confirmar la llegada.")
+            latitude, longitude, accuracy_m, _ = location
+            if accuracy_m is None or accuracy_m > 100:
+                return _error("La precision GPS debe ser de 100 metros o mejor para confirmar la entrega.")
+            distance_m = float(haversine_km(
+                float(latitude), float(longitude), float(stop.latitude), float(stop.longitude)
+            )) * 1000
+            if distance_m > 120:
+                return _error(
+                    f"Aun no has llegado a la tienda. Estas aproximadamente a {distance_m:.0f} metros; "
+                    "la entrega se habilita dentro de 120 metros."
+                )
         if location:
             stop.delivery_latitude, stop.delivery_longitude, stop.delivery_accuracy_m, stop.delivery_captured_at = location
         if stop.status == RouteStop.Status.DELIVERED and status != stop.status:

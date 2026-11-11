@@ -25,4 +25,5 @@ urlpatterns = [
     path("api/balances/", views.api_balances, name="api-balances"),
     path("api/reports/", views.api_reports, name="api-reports"),
     path("api/fuel-price/", views.api_fuel_price, name="api-fuel-price"),
+    path("api/<str:kind>/<int:record_id>/delete/", views.api_delete, name="api-delete"),
 ]

@@ -92,15 +92,20 @@ class OfflineApiTests(TestCase):
         stop = trip.stops.get()
         self.user.profile.role = UserProfile.Role.DRIVER
         self.user.profile.save()
-        payload = {"status": "delivered", "delivery_latitude": 0, "delivery_longitude": 0,
+        far_payload = {"status": "delivered", "delivery_latitude": 14.70, "delivery_longitude": -90.60,
+                       "delivery_accuracy_m": 8, "delivery_captured_at": timezone.now().isoformat()}
+        rejected = self.post(f"/api/trips/{trip.pk}/stops/{stop.pk}/", far_payload)
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIn("Aun no has llegado", rejected.json()["error"])
+        payload = {"status": "delivered", "delivery_latitude": 14.63, "delivery_longitude": -90.51,
                    "delivery_accuracy_m": 8, "delivery_captured_at": timezone.now().isoformat()}
         key = uuid.uuid4()
         first = self.post(f"/api/trips/{trip.pk}/stops/{stop.pk}/", payload, key)
         self.assertEqual(first.status_code, 200)
         self.assertEqual(self.post(f"/api/trips/{trip.pk}/stops/{stop.pk}/", payload, key).json(), first.json())
         stop.refresh_from_db()
-        self.assertEqual(stop.delivery_latitude, 0)
-        self.assertEqual(first.json()["stop"]["delivery_longitude"], 0)
+        self.assertEqual(stop.delivery_latitude, Decimal("14.63"))
+        self.assertEqual(first.json()["stop"]["delivery_longitude"], -90.51)
         self.assertEqual(stop.latitude, Decimal(self.store.latitude))
         self.assertEqual(stop.status, RouteStop.Status.DELIVERED)
 

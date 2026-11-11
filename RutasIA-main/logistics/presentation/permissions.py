@@ -17,7 +17,7 @@ WRITE_ROLES = {
     "api_plan_trip": (ADMIN, SUPERVISOR), "api_trip_action": (ADMIN, SUPERVISOR, DRIVER),
     "api_trip_event": (ADMIN, SUPERVISOR, DRIVER), "api_route_stop": (ADMIN, SUPERVISOR, DRIVER),
     "api_payments": (ADMIN, SUPERVISOR, SELLER, DRIVER), "api_fuel_price": (ADMIN,),
-    "api_order_action": (ADMIN, SUPERVISOR),
+    "api_order_action": (ADMIN, SUPERVISOR), "api_delete": (ADMIN, SUPERVISOR),
 }
 
 

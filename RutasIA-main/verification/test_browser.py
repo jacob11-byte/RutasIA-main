@@ -9,7 +9,7 @@ from django.core.cache import cache
 from django.test import override_settings
 from playwright.sync_api import sync_playwright
 
-from logistics.models import Department, Order, OrderItem, Payment, Product, Store, UserProfile, Vehicle
+from logistics.models import Department, Driver, Order, OrderItem, Payment, Product, Store, UserProfile, Vehicle
 from logistics.application.services import TripPlanner, TripLifecycleService
 
 
@@ -47,7 +47,7 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         UserProfile.objects.create(user=self.user, role=UserProfile.Role.SUPERVISOR)
         self.department = Department.objects.create(code="GUA", name="Guatemala", latitude="14.63", longitude="-90.51")
         self.product = Product.objects.create(name="Agua", unit_price=20, unit_weight_kg=20)
-        self.store = Store.objects.create(name="Cliente base", department=self.department, latitude="14.63", longitude="-90.51")
+        self.store = Store.objects.create(name="Cliente base", department=self.department, latitude="14.634915", longitude="-90.506882")
         order = Order.objects.create(origin=self.department, destination=self.department, store=self.store, weight_kg=20)
         OrderItem.objects.create(order=order, product=self.product, quantity=1, unit_price=20)
         vehicle = Vehicle.objects.create(plate="BROWSER", model="Reparto", capacity_kg=1000, fuel_efficiency_km_l=10, cost_per_km=2)
@@ -69,7 +69,7 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         try:
             self.page.wait_for_function("typeof state !== 'undefined' && state.currentUser !== null", timeout=15000)
             self.page.wait_for_function("!!navigator.serviceWorker.controller", timeout=15000)
-            self.page.evaluate("async () => { for (let i=0;i<150;i++) { if (await caches.open('flamia-shell-v5').then(cache => cache.match('/'))) return; await new Promise(r => setTimeout(r,100)); } throw new Error('Offline shell not ready'); }")
+            self.page.evaluate("async () => { for (let i=0;i<150;i++) { if (await caches.open('flamia-shell-v8').then(cache => cache.match('/'))) return; await new Promise(r => setTimeout(r,100)); } throw new Error('Offline shell not ready'); }")
         except Exception:
             print("Browser diagnostic:", self.page.url, self.errors, self.page.locator("body").inner_text()[-1000:], flush=True)
             raise
@@ -156,6 +156,38 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         self.page.locator("#btn-store-gps").click()
         self.page.wait_for_function("document.querySelector('#store-gps-status').textContent.includes('Ubicacion bloqueada')")
         self.assertEqual(self.errors, [])
+
+    def test_driver_arrival_dialog_confirms_delivery_inside_geofence(self):
+        driver = Driver.objects.create(user=self.user, name="Repartidor GPS", license_number="WEB-GPS")
+        self.trip.driver = driver
+        self.trip.save(update_fields=["driver"])
+        self.user.profile.role = UserProfile.Role.DRIVER
+        self.user.profile.save(update_fields=["role"])
+        stop = self.trip.stops.get()
+        self.page.evaluate("reloadAll()")
+        self.page.evaluate("""ids => {
+            const trip = state.trips.find(row => row.id === ids.tripId);
+            const stop = trip.stops.find(row => row.id === ids.stopId);
+            const point = {lat: Number(stop.latitude), lng: Number(stop.longitude)};
+            window.google = {maps: {SymbolPath: {FORWARD_CLOSED_ARROW: "arrow"}}};
+            nav = {
+                trip, stops: [stop], stepIndex: 0, position: null, heading: null, following: false,
+                steps: [{path: [point, point], distance: 1, duration: 1, isLegEnd: true, legIndex: 0,
+                         text: {main: "Llegada", detail: ""}, maneuver: "straight"}],
+                driverMarker: {setPosition() {}, setIcon() {}},
+                accuracyCircle: {setCenter() {}, setRadius() {}},
+                arrivals: new Set(), offRouteCount: 0, announcedStep: -1, nearAnnounced: false, voice: false
+            };
+            onNavPosition(point, null, 10);
+        }""", {"tripId": self.trip.pk, "stopId": stop.pk})
+        dialog = self.page.locator("#arrival-dialog")
+        dialog.wait_for(state="visible")
+        self.assertIn("Llegaste a", dialog.inner_text())
+        self.page.locator("#btn-confirm-arrival").click()
+        self.page.wait_for_function("state.trips.some(trip => trip.stops.some(stop => stop.status === 'delivered'))")
+        stop.refresh_from_db()
+        self.assertEqual(stop.status, "delivered")
+        self.assertEqual(stop.delivery_accuracy_m, 10)
 
     def test_lost_response_replays_without_duplicate_and_storage_failure_is_visible(self):
         self.page.evaluate("window.setInterval = () => 0")
@@ -263,6 +295,23 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         other.profile.refresh_from_db()
         self.assertEqual(other.profile.role, "supervisor")
 
+    def test_admin_can_approve_pending_driver_from_dashboard(self):
+        self.user.profile.role = "admin"
+        self.user.profile.save()
+        pending = User.objects.create_user("repartidor-pendiente", is_active=False)
+        UserProfile.objects.create(user=pending, role="driver")
+        driver = Driver.objects.create(user=pending, name="Repartidor Pendiente", license_number="PEND-01", is_active=False)
+        self.page.evaluate("reloadAll()")
+        card = self.page.locator("#pending-accounts-card")
+        card.wait_for(state="visible")
+        self.assertIn("repartidor-pendiente", card.inner_text())
+        card.locator(f'[data-approve-user="{pending.pk}"]').click()
+        self.page.wait_for_function("!state.users.some(user => user.username === 'repartidor-pendiente' && !user.is_active)")
+        pending.refresh_from_db()
+        driver.refresh_from_db()
+        self.assertTrue(pending.is_active)
+        self.assertTrue(driver.is_active)
+
     def test_new_offline_order_can_be_cancelled_before_synchronization(self):
         self.context.set_offline(True)
         self.page.evaluate("""async payload => {
@@ -296,6 +345,45 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         self.queue_count(0)
         order = Order.objects.exclude(pk=self.trip.orders.get().pk).get()
         self.assertEqual(order.balance_due, 0)
+
+    def test_supervisor_deletes_store_without_history(self):
+        unused = Store.objects.create(name="Tienda para borrar", department=self.department, latitude="14.63", longitude="-90.51")
+        self.page.evaluate("reloadAll()")
+        self.tab("stores")
+        self.page.once("dialog", lambda dialog: dialog.accept())
+        self.page.locator(f'[data-delete-kind="stores"][data-delete-id="{unused.pk}"]').click()
+        self.page.wait_for_function("!state.stores.some(store => store.name === 'Tienda para borrar')")
+        self.assertFalse(Store.objects.filter(pk=unused.pk).exists())
+        self.assertTrue(Store.objects.filter(pk=self.store.pk).exists())
+
+    def test_navigation_follows_steps_and_sanitizes_instructions(self):
+        result = self.page.evaluate("""() => {
+            const a = {lat: 14.6, lng: -90.5}, b = {lat: 14.6, lng: -90.497}, c = {lat: 14.603, lng: -90.497};
+            const steps = [{path: [a, b]}, {path: [b, c]}];
+            const html = 'Gira a la <b>derecha</b> hacia <b>5a Avenida</b><div>Destino a la izquierda</div><img src=x onerror="window.hacked=1">';
+            return {
+                middle: navLocate(steps, 0, {lat: 14.6001, lng: -90.4985}),
+                corner: navLocate(steps, 0, b).index,
+                away: navLocate(steps, 0, {lat: 14.61, lng: -90.4985}).offRoute,
+                back: navLocate(steps, 1, a),
+                text: navInstructionText(html),
+                near: navFormatDistance(234), far: navFormatDistance(1530)
+            };
+        }""")
+        self.assertEqual(result["middle"]["index"], 0)
+        self.assertLess(result["middle"]["distance"], 15)
+        self.assertTrue(150 < result["middle"]["remaining"] < 175)
+        self.assertEqual(result["corner"], 1)
+        self.assertTrue(result["away"])
+        self.assertEqual(result["back"]["index"], 1)
+        self.assertTrue(result["back"]["offRoute"])
+        self.assertEqual(result["text"], {"main": "Gira a la derecha hacia 5a Avenida", "detail": "Destino a la izquierda"})
+        self.assertFalse(self.page.evaluate("window.hacked === 1"))
+        self.assertEqual((result["near"], result["far"]), ("230 m", "1.5 km"))
+        self.tab("map")
+        self.page.locator("#btn-start-nav").click()
+        self.page.wait_for_function("document.getElementById('toast').textContent.includes('necesita conexion')")
+        self.assertFalse(self.page.evaluate("document.body.classList.contains('is-navigating')"))
 
 
 class WebKitOfflineTests(OfflineBrowserTests):

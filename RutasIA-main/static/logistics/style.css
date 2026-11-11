@@ -882,6 +882,75 @@ button:disabled {
     font-size: 0.78rem;
 }
 
+.pending-accounts-card {
+    border: 1px solid #f59e0b;
+    background: #fffbeb;
+    margin-bottom: 1rem;
+}
+
+.pending-accounts-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.pending-accounts-header h3,
+.pending-accounts-header p {
+    margin: 0.2rem 0;
+}
+
+.pending-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    border-radius: 999px;
+    background: #f59e0b;
+    color: #ffffff;
+    font-size: 1rem;
+}
+
+.arrival-dialog {
+    width: min(92vw, 430px);
+    border: 0;
+    border-radius: 18px;
+    padding: 1.5rem;
+    color: var(--ink);
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+.arrival-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.62);
+    backdrop-filter: blur(3px);
+}
+
+.arrival-dialog h2,
+.arrival-dialog p {
+    margin: 0.35rem 0;
+}
+
+.arrival-icon {
+    display: grid;
+    place-items: center;
+    width: 3.25rem;
+    height: 3.25rem;
+    margin-bottom: 0.75rem;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #15803d;
+    font-size: 1.8rem;
+    font-weight: 800;
+}
+
+.arrival-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 1.25rem;
+}
+
 .btn-small {
     min-height: 34px;
     padding: 0.4rem 0.8rem;
@@ -1623,5 +1692,228 @@ button:disabled {
 
     .toast.show {
         transform: translateY(0);
+    }
+}
+
+/* ── Navegacion paso a paso ── */
+body.is-navigating {
+    overflow: hidden;
+}
+
+body.is-navigating .toast {
+    z-index: 1100;
+}
+
+.nav-overlay {
+    display: none;
+}
+
+.map-card.is-navigating {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--navy-0);
+}
+
+.map-card.is-navigating > :not(#route-map):not(.nav-overlay) {
+    display: none;
+}
+
+/* Google Maps sets position inline on this element, so it is sized by height instead of inset. */
+.map-card.is-navigating #route-map {
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+}
+
+.map-card.is-navigating .nav-overlay {
+    display: block;
+}
+
+.nav-overlay [hidden] {
+    display: none !important;
+}
+
+.nav-banner {
+    position: absolute;
+    top: max(12px, env(safe-area-inset-top));
+    left: 12px;
+    right: 12px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: var(--navy-0);
+    color: #ffffff;
+    box-shadow: 0 12px 32px rgba(11, 18, 32, 0.35);
+}
+
+.nav-banner.is-off-route {
+    background: #b45309;
+}
+
+.nav-banner.is-arrived {
+    background: #15803d;
+}
+
+.nav-icon {
+    width: 58px;
+    height: 58px;
+    flex: 0 0 58px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: var(--primary);
+}
+
+.nav-banner.is-off-route .nav-icon,
+.nav-banner.is-arrived .nav-icon {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.nav-icon svg {
+    width: 36px;
+    height: 36px;
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.nav-text {
+    min-width: 0;
+    flex: 1;
+}
+
+.nav-distance {
+    font-size: 1.7rem;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.nav-instruction {
+    margin-top: 2px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.nav-current {
+    margin-top: 4px;
+    font-size: 0.8rem;
+    color: #cbd5e1;
+}
+
+.nav-banner-action {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 0.55rem 0.9rem;
+    border: 0;
+    border-radius: 10px;
+    font: inherit;
+    font-weight: 700;
+    color: var(--ink);
+    background: #ffffff;
+    cursor: pointer;
+}
+
+.nav-recenter {
+    position: absolute;
+    right: 16px;
+    bottom: 132px;
+    z-index: 2;
+    min-height: 44px;
+    padding: 0.55rem 1rem;
+    border: 0;
+    border-radius: 999px;
+    font: inherit;
+    font-weight: 700;
+    color: #ffffff;
+    background: var(--primary);
+    box-shadow: 0 8px 20px rgba(29, 111, 216, 0.4);
+    cursor: pointer;
+}
+
+.nav-footer {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: 0 12px 32px rgba(11, 18, 32, 0.25);
+}
+
+.nav-eta {
+    display: grid;
+    gap: 2px;
+}
+
+.nav-eta strong {
+    font-size: 1.15rem;
+    color: var(--ok);
+}
+
+.nav-eta span,
+.nav-next-stop {
+    font-size: 0.8rem;
+    color: var(--ink-muted);
+}
+
+.nav-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+}
+
+@media (max-width: 600px) {
+    .nav-banner {
+        left: 8px;
+        right: 8px;
+        flex-wrap: wrap;
+        padding: 12px;
+    }
+
+    .nav-icon {
+        width: 50px;
+        height: 50px;
+        flex-basis: 50px;
+    }
+
+    .nav-distance {
+        font-size: 1.45rem;
+    }
+
+    .nav-banner-action {
+        width: 100%;
+    }
+
+    .nav-footer {
+        left: 8px;
+        right: 8px;
+    }
+
+    .nav-actions {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .nav-actions .btn-small {
+        flex: 1;
     }
 }

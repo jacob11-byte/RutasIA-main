@@ -94,6 +94,22 @@
                     <button class="btn-filter" id="dash-filter-btn">Filtrar</button>
                     <button class="btn-filter btn-clear" id="dash-clear-btn">Limpiar</button>
                 </div>
+                <article class="table-card pending-accounts-card" id="pending-accounts-card" style="display:none">
+                    <div class="pending-accounts-header">
+                        <div>
+                            <p class="eyebrow">Acción administrativa</p>
+                            <h3>Cuentas pendientes de aprobación</h3>
+                            <p>Verifica el nombre, el rol solicitado y aprueba únicamente a empleados autorizados.</p>
+                        </div>
+                        <strong id="pending-users-count" class="pending-count">0</strong>
+                    </div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol solicitado</th><th>Acción</th></tr></thead>
+                            <tbody id="pending-users-body"></tbody>
+                        </table>
+                    </div>
+                </article>
                 <!-- Precio de combustible para reparto -->
                 <article class="fuel-price-card" id="fuel-price-card">
                     <div class="fuel-header">
@@ -222,6 +238,7 @@
                                     <th>Repartidor</th>
                                     <th>Zona/base</th>
                                     <th>Estado</th>
+                                    <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="vehicles-body"></tbody>
@@ -310,7 +327,7 @@
                                     <th>GPS</th>
                                     <th>Estado</th>
                                     <th>Mapa</th>
-                                    <th>Editar</th>
+                                    <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="stores-body"></tbody>
@@ -363,6 +380,7 @@
                                     <th>Precio</th>
                                     <th>Peso</th>
                                     <th>Estado</th>
+                                    <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="products-body"></tbody>
@@ -403,6 +421,7 @@
                                     <th>Telefono</th>
                                     <th>Licencia</th>
                                     <th>Estado</th>
+                                    <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="drivers-body"></tbody>
@@ -742,18 +761,17 @@
                         </div>
                         <div class="route-stops" id="map-route-stops"></div>
                         <div class="route-legend">
-                            <span class="legend-item"><i class="legend-dot legend-network"></i>Red completa</span>
                             <span class="legend-item"><i class="legend-dot legend-store"></i>Tiendas</span>
-                            <span class="legend-item"><i class="legend-dot legend-route"></i>Ruta seleccionada</span>
+                            <span class="legend-item"><i class="legend-dot legend-route"></i>Recorrido por carretera</span>
                             <span class="legend-item"><i class="legend-dot legend-start"></i>Inicio</span>
                             <span class="legend-item"><i class="legend-dot legend-middle"></i>Intermedio</span>
                             <span class="legend-item"><i class="legend-dot legend-end"></i>Fin</span>
                         </div>
                     </div>
                     <div class="gps-sim-controls">
-                        <button type="button" id="btn-navigate-next" class="btn-small" style="display:none">Ir a la siguiente tienda</button>
-                        <button type="button" id="btn-start-gps" class="btn-small">Simular GPS</button>
-                        <button type="button" id="btn-sim-delivery" class="btn-small btn-neutral">Simular entrega</button>
+                        <button type="button" id="btn-navigate-next" class="btn-small btn-neutral" style="display:none">Abrir navegación externa</button>
+                        <button type="button" id="btn-start-gps" class="btn-small">Simular recorrido vial</button>
+                        <button type="button" id="btn-sim-delivery" class="btn-small btn-neutral">Demostración de ruta</button>
                         <button type="button" id="btn-stop-gps" class="btn-small btn-danger" style="display:none">Detener simulacion</button>
                         <span id="gps-sim-status" class="gps-sim-hint"></span>
                     </div>
@@ -797,6 +815,7 @@
                                     <th>Nombre</th>
                                     <th>Latitud</th>
                                     <th>Longitud</th>
+                                    <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="departments-body"></tbody>
@@ -863,6 +882,7 @@
                                     <th>Email</th>
                                     <th>Rol</th>
                                     <th>Estado</th>
+                                    <th>Acción</th>
                                 </tr>
                             </thead>
                             <tbody id="users-body"></tbody>
@@ -877,6 +897,16 @@
     </div>
 
     <div id="toast" class="toast"></div>
+    <dialog id="arrival-dialog" class="arrival-dialog" aria-labelledby="arrival-title">
+        <div class="arrival-icon" aria-hidden="true">✓</div>
+        <p class="eyebrow">Llegada confirmada por GPS</p>
+        <h2 id="arrival-title">Llegaste al destino</h2>
+        <p id="arrival-message">El camión está dentro del área permitida de la tienda.</p>
+        <div class="arrival-actions">
+            <button type="button" id="btn-confirm-arrival" class="btn-inline">Marcar como entregado</button>
+            <button type="button" id="btn-dismiss-arrival" class="btn-small btn-neutral">Ahora no</button>
+        </div>
+    </dialog>
     <script>
         window.ORS_API_KEY = "{{ ors_api_key|escapejs }}";
         // Muestra en el encabezado el nombre de la seccion activa.
@@ -890,6 +920,8 @@
     <script src="{% static 'logistics/offline.js' %}" defer></script>
     <script src="{% static 'logistics/location.js' %}" defer></script>
     <script src="{% static 'logistics/business.js' %}" defer></script>
+    <script src="{% static 'logistics/records.js' %}" defer></script>
+    <script src="{% static 'logistics/navigation.js' %}" defer></script>
     <script src="{% static 'logistics/app.js' %}" defer></script>
 </body>
 </html>

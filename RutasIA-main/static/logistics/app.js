@@ -147,6 +147,8 @@ function bindForms() {
     bindSafeSubmit("event-form", onEventSubmit);
     document.getElementById("trips-body").addEventListener("click", onTripsActionClick);
     document.getElementById("stores-body").addEventListener("click", onStoresActionClick);
+    document.getElementById("users-body").addEventListener("click", onUserApprovalClick);
+    document.getElementById("pending-users-body").addEventListener("click", onUserApprovalClick);
     document.getElementById("user-form").addEventListener("submit", onUserSubmit);
     document.getElementById("department-form").addEventListener("submit", onDepartmentSubmit);
     document.getElementById("map-trip-select").addEventListener("change", onMapTripSelect);
@@ -181,7 +183,7 @@ function initPwa() {
             // The first navigation happened before the worker controlled this page.
             const shell = await fetch("/", { credentials: "same-origin", cache: "no-store" });
             if (shell.ok && shell.headers.get("X-Flamia-User-ID") === FlamiaOffline.owner) {
-                const cache = await caches.open("flamia-shell-v5");
+                const cache = await caches.open("flamia-shell-v8");
                 await cache.put("/", shell);
             }
         }).catch((error) => {
@@ -388,6 +390,7 @@ function renderAll() {
     renderTripFilterVehicles();
     if (window.google?.maps) renderMap();
     renderUsers();
+    renderPendingUsers();
     renderBusinessDetails();
 }
 
@@ -527,7 +530,7 @@ function renderStores() {
                 <td>${Number(store.latitude).toFixed(5)}, ${Number(store.longitude).toFixed(5)}</td>
                 <td>${statusChip(store.is_active ? "active" : "inactive")}</td>
                 <td><button type="button" class="btn-inline" data-focus-store="${store.id}">Ver</button></td>
-                <td>${["admin", "supervisor", "seller"].includes(state.currentUser?.role) ? `<button type="button" class="btn-inline" data-edit-store="${store.id}">Editar</button>` : "-"}</td>
+                <td>${(["admin", "supervisor", "seller"].includes(state.currentUser?.role) ? `<button type="button" class="btn-inline" data-edit-store="${store.id}">Editar</button>` : "") + deleteButton("stores", store.id, store.name) || "-"}</td>
             </tr>`
         );
     });
@@ -538,7 +541,7 @@ function renderProducts() {
     if (!body) return;
     body.innerHTML = "";
     if (!state.products.length) {
-        body.innerHTML = `<tr><td colspan="6">No hay productos registrados.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="7">No hay productos registrados.</td></tr>`;
         return;
     }
     state.products.forEach((product) => {
@@ -551,6 +554,7 @@ function renderProducts() {
                 <td>Q ${Number(product.unit_price).toFixed(2)}</td>
                 <td>${Number(product.unit_weight_kg).toFixed(2)} kg</td>
                 <td>${statusChip(product.is_active ? "active" : "inactive")}</td>
+                <td>${deleteButton("products", product.id, product.name) || "-"}</td>
             </tr>`
         );
     });
@@ -588,7 +592,7 @@ function renderDepartments() {
     if (!body) return;
     body.innerHTML = "";
     if (!state.departments.length) {
-        body.innerHTML = `<tr><td colspan="4">No hay zonas registradas.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="5">No hay zonas registradas.</td></tr>`;
         return;
     }
     state.departments.forEach((d) => {
@@ -599,6 +603,7 @@ function renderDepartments() {
                 <td>${escapeHtml(d.name)}</td>
                 <td>${d.latitude !== null && d.latitude !== undefined ? d.latitude : "-"}</td>
                 <td>${d.longitude !== null && d.longitude !== undefined ? d.longitude : "-"}</td>
+                <td>${deleteButton("departments", d.id, d.name) || "-"}</td>
             </tr>`
         );
     });
@@ -621,7 +626,7 @@ function renderVehicles() {
     const body = document.getElementById("vehicles-body");
     body.innerHTML = "";
     if (!state.vehicles.length) {
-        body.innerHTML = `<tr><td colspan="8">No hay vehiculos registrados.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="9">No hay vehiculos registrados.</td></tr>`;
         return;
     }
     state.vehicles.forEach((v) => {
@@ -636,6 +641,7 @@ function renderVehicles() {
                 <td>${escapeHtml(v.driver_name || "-")}</td>
                 <td>${escapeHtml(v.current_department_name || "-")}</td>
                 <td>${statusChip(v.is_active ? "active" : "inactive")}</td>
+                <td>${deleteButton("vehicles", v.id, v.plate) || "-"}</td>
             </tr>`
         );
     });
@@ -645,7 +651,7 @@ function renderDrivers() {
     const body = document.getElementById("drivers-body");
     body.innerHTML = "";
     if (!state.drivers.length) {
-        body.innerHTML = `<tr><td colspan="4">No hay repartidores registrados.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="5">No hay repartidores registrados.</td></tr>`;
         return;
     }
     state.drivers.forEach((d) => {
@@ -656,6 +662,7 @@ function renderDrivers() {
                 <td>${escapeHtml(d.phone || "-")}</td>
                 <td>${escapeHtml(d.license_number)}</td>
                 <td>${statusChip(d.is_active ? "active" : "inactive")}</td>
+                <td>${deleteButton("drivers", d.id, d.name) || "-"}</td>
             </tr>`
         );
     });
@@ -692,7 +699,7 @@ function renderOrdersFiltered() {
                 <td>Q ${Number(o.balance_due || 0).toFixed(2)}<br><small>${paymentStatusLabel(o)}</small></td>
                 <td>${priorityLabel(o.priority)}</td>
                 <td>${statusChip(o.status)}</td>
-                <td>${["admin", "supervisor"].includes(state.currentUser?.role) && ["pending", "assigned"].includes(o.status) && !o.paid_amount ? `<button type="button" data-cancel-order="${o.id}">Cancelar pedido</button>` : "-"}</td>
+                <td>${(["admin", "supervisor"].includes(state.currentUser?.role) && ["pending", "assigned"].includes(o.status) && !o.paid_amount ? `<button type="button" data-cancel-order="${o.id}">Cancelar pedido</button>` : "") + (["pending", "canceled"].includes(o.status) && !o.paid_amount ? deleteButton("orders", o.id, o.code) : "") || "-"}</td>
             </tr>`
         );
     });
@@ -885,7 +892,7 @@ function renderUsers() {
     if (!body) return;
     body.innerHTML = "";
     if (!state.users.length) {
-        body.innerHTML = `<tr><td colspan="5">No hay usuarios registrados.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="6">No hay usuarios registrados.</td></tr>`;
         return;
     }
     const roleLabels = { admin: "Administrador", supervisor: "Supervisor", seller: "Vendedor/cobrador", driver: "Repartidor" };
@@ -898,9 +905,46 @@ function renderUsers() {
                 <td>${escapeHtml(u.email || "-")}</td>
                 <td><span class="role-badge role-${u.role}">${roleLabels[u.role] || u.role}</span></td>
                 <td>${statusChip(u.is_active ? "active" : "inactive")}</td>
+                <td>${u.is_active ? "—" : `<button type="button" class="btn-inline" data-approve-user="${u.id}" data-user-role="${u.role}">Aprobar cuenta</button>`}</td>
             </tr>`
         );
     });
+}
+
+function renderPendingUsers() {
+    const card = document.getElementById("pending-accounts-card");
+    const body = document.getElementById("pending-users-body");
+    if (!card || !body) return;
+    const pending = state.currentUser?.role === "admin" ? state.users.filter(user => !user.is_active) : [];
+    card.style.display = pending.length ? "" : "none";
+    document.getElementById("pending-users-count").textContent = String(pending.length);
+    const roleLabels = { admin: "Administrador", supervisor: "Supervisor", seller: "Vendedor/cobrador", driver: "Repartidor" };
+    body.innerHTML = pending.map(user => `<tr>
+        <td>${escapeHtml(user.username)}</td>
+        <td>${escapeHtml(user.full_name || "-")}</td>
+        <td><span class="role-badge role-${user.role}">${roleLabels[user.role] || escapeHtml(user.role)}</span></td>
+        <td><button type="button" class="btn-inline" data-approve-user="${user.id}" data-user-role="${user.role}">Aprobar cuenta</button></td>
+    </tr>`).join("");
+}
+
+async function onUserApprovalClick(event) {
+    const button = event.target.closest("[data-approve-user]");
+    if (!button) return;
+    button.disabled = true;
+    try {
+        await postJson(`/api/users/${button.dataset.approveUser}/`, {
+            role: button.dataset.userRole,
+            is_active: true
+        }, makeLocalId());
+        state.users = (await getJson(API.users)).users;
+        renderUsers();
+        renderPendingUsers();
+        renderBusinessDetails();
+        showToast("Cuenta aprobada. El empleado ya puede iniciar sesión.");
+    } catch (error) {
+        showToast(error.message, true);
+        button.disabled = false;
+    }
 }
 
 // â”€â”€ MAP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1040,8 +1084,9 @@ async function focusMapTripById(tripId, options = {}) {
             map.fitBounds(result.routes[0].bounds, 48);
         }
     } catch (err) {
-        console.warn("Directions API no disponible, usando línea directa:", err.message);
+        console.warn("No se pudo calcular el recorrido por carretera:", err.message);
         addWaypointMarkers();
+        showToast("No se pudo calcular la carretera. Revisa la conexión y la configuración de Google Routes.", true);
         if (shouldFit) {
             const bounds = new google.maps.LatLngBounds();
             waypointCoords.forEach(([lng, lat]) => bounds.extend({ lat, lng }));
@@ -1057,23 +1102,6 @@ function updateMapData() {
     gmapStoreMarkers = [];
     gmapConnections.forEach((p) => p.setMap(null));
     gmapConnections = [];
-
-    state.connections.forEach((connection) => {
-        const origin = state.departments.find((d) => d.id === connection.origin_id);
-        const destination = state.departments.find((d) => d.id === connection.destination_id);
-        if (!origin || !destination || !origin.latitude || !destination.latitude) return;
-        const poly = new google.maps.Polyline({
-            path: [
-                { lat: Number(origin.latitude), lng: Number(origin.longitude) },
-                { lat: Number(destination.latitude), lng: Number(destination.longitude) }
-            ],
-            strokeColor: "#67e8f9",
-            strokeOpacity: 0.45,
-            strokeWeight: 2,
-            map
-        });
-        gmapConnections.push(poly);
-    });
 
     state.departments.filter((d) => d.latitude && d.longitude).forEach((dept) => {
         const marker = new google.maps.Marker({
@@ -1198,7 +1226,7 @@ function updateMapRouteSummary(trip) {
         return;
     }
     summary.classList.remove("is-empty");
-    hint.textContent = "Ruta resaltada con nodos de inicio, intermedios y fin.";
+    hint.textContent = "Recorrido de conducción calculado por carretera, con inicio, tiendas y destino.";
     const storeNames = trip.orders
         .map((order) => order.store_name)
         .filter(Boolean);
@@ -1230,11 +1258,10 @@ function renderMapStops(trip) {
                         <span>${statusChip(stop.status)} ${stop.observation ? escapeHtml(stop.observation) : ""}</span>
                     </div>
                     <div class="route-stop-actions">
-                        ${state.currentUser?.role === "driver"
-                            ? `<button type="button" class="btn-inline" data-open-delivery-stop="${stop.id}">Registrar con GPS</button>`
-                            : ["admin", "supervisor"].includes(state.currentUser?.role)
-                                ? `<button type="button" class="btn-inline" data-stop-id="${stop.id}" data-stop-status="delivered">Entregado</button>
-                                   <button type="button" class="btn-inline btn-danger" data-stop-id="${stop.id}" data-stop-status="not_delivered">No entregado</button>`
+                        ${state.currentUser?.role === "driver" && stop.status === "pending"
+                            ? `<button type="button" class="btn-inline" data-open-delivery-stop="${stop.id}">Verificar llegada con GPS</button>`
+                            : ["admin", "supervisor"].includes(state.currentUser?.role) && stop.status === "pending"
+                                ? `<span class="gps-sim-hint">La entrega requiere llegada GPS del repartidor.</span>`
                                 : ""}
                     </div>
                 </article>
@@ -1323,8 +1350,12 @@ function startGpsSimulation() {
     gpsSimTimer = setInterval(() => {
         step++;
         if (step >= path.length) {
-            stopGpsSimulation();
-            showToast("Simulacion GPS completada.");
+            clearInterval(gpsSimTimer);
+            gpsSimTimer = null;
+            gpsSimMarker.setPosition(path[path.length - 1]);
+            if (hint) hint.textContent = "El vehículo llegó al destino siguiendo la carretera.";
+            if (typeof showSimulatedArrivalDialog === "function") showSimulatedArrivalDialog();
+            showToast("El vehículo llegó al destino por el recorrido vial.");
             return;
         }
         gpsSimMarker.setPosition(path[step]);
@@ -1373,41 +1404,11 @@ async function simulateDelivery(tripId) {
         return;
     }
 
-    deliverySimTimer = window.setTimeout(() => {}, 1);
-    try {
-        document.querySelector('[data-tab="map"]')?.click();
-        await focusMapTripById(tripId, { shouldFit: true });
-        startGpsSimulation();
-
-        if (trip.status === "planned") {
-            await postJson(`/api/trips/${tripId}/action/`, { action: "start" });
-            showToast("Simulacion: ruta iniciada.");
-            await reloadAll();
-            trip = state.trips.find((item) => item.id === tripId) || trip;
-            await focusMapTripById(tripId, { shouldFit: false });
-            startGpsSimulation();
-        }
-
-        const stops = [...(trip.stops || [])].sort((a, b) => a.sequence - b.sequence);
-        for (const [index, stop] of stops.entries()) {
-            await sleep(1100);
-            const paidMode = index % 3 === 1 ? "abono parcial registrado" : "pago contado registrado";
-            const note = `Simulacion: visita ${index + 1}/${stops.length} en ${stop.store_name || stop.order_code}; ${paidMode}.`;
-            await postJson(`/api/trips/${tripId}/stops/${stop.id}/`, { status: "delivered", observation: note });
-            showToast(`Simulacion: visita ${index + 1} registrada.`);
-        }
-
-        await sleep(900);
-        await postJson(`/api/trips/${tripId}/action/`, { action: "complete" });
-        showToast("Simulacion completada: entrega marcada como finalizada.");
-        await reloadAll();
-        focusMapTripById(tripId, { shouldFit: false });
-    } catch (error) {
-        showToast(error.message, true);
-    } finally {
-        window.clearTimeout(deliverySimTimer);
-        deliverySimTimer = null;
-    }
+    deliverySimTimer = window.setTimeout(() => { deliverySimTimer = null; }, 1000);
+    document.querySelector('[data-tab="map"]')?.click();
+    await focusMapTripById(tripId, { shouldFit: true });
+    startGpsSimulation();
+    showToast("Demostración iniciada. No modificará entregas reales.");
 }
 
 function setSummaryField(id, value) {
@@ -1852,6 +1853,8 @@ async function onUserSubmit(event) {
         const res = await getJson(API.users);
         state.users = res.users;
         renderUsers();
+        renderPendingUsers();
+        renderBusinessDetails();
     } catch (error) {
         showToast(error.message, true);
     }

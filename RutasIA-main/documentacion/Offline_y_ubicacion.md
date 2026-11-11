@@ -12,8 +12,8 @@ La captura y sincronización funcionan sin utilizar la simulación del mapa. La 
 ## Trabajo del repartidor
 
 1. Abrir Flamia con conexión e iniciar sesión con la cuenta enlazada a su ficha de repartidor. Sólo aparecerán las rutas que le fueron asignadas.
-2. En **Rutas**, iniciar la ruta y usar **Ir a la siguiente tienda**. El teléfono toma la ubicación actual del repartidor y abre la navegación hacia las coordenadas exactas de la siguiente tienda pendiente.
-3. Al llegar, usar **Registrar entrega con ubicación del repartidor**. La captura debe tener menos de cinco minutos al enviar el formulario. Se guarda separada de la ubicación fija de la tienda, con precisión y fecha de captura.
+2. En **Mapa**, seleccionar la ruta y pulsar **Navegar ruta**. El teléfono toma la ubicación actual del repartidor, calcula el recorrido por carretera y mueve el marcador del camión con el GPS. También puede usarse **Abrir navegación externa**.
+3. Al entrar en el área de la tienda, aparece automáticamente **Llegaste al destino** con la opción **Marcar como entregado**. Para confirmar se exige una lectura GPS de 100 m o mejor y estar dentro de 120 m de las coordenadas de la tienda. El servidor comprueba nuevamente la distancia.
 4. Registrar cada parada como entregada o no entregada. La ruta no puede completarse mientras queden paradas pendientes.
 5. Sin red se pueden guardar resultados de paradas, acciones de rutas, registros de visita y cobros asociados a la ruta. La fecha GPS capturada se conserva aunque el servidor reciba la operación después.
 
