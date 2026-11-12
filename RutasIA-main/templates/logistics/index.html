@@ -916,7 +916,7 @@
             if (tab && title) title.textContent = tab.textContent.trim();
         });
     </script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBcoQAzpOO8-BDwaSvM0owPca0_NCdoK3k&libraries=places"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|default:'AIzaSyBcoQAzpOO8-BDwaSvM0owPca0_NCdoK3k'|urlencode }}&libraries=places&language=es&region=GT"></script>
     <script src="{% static 'logistics/offline.js' %}" defer></script>
     <script src="{% static 'logistics/location.js' %}" defer></script>
     <script src="{% static 'logistics/business.js' %}" defer></script>
