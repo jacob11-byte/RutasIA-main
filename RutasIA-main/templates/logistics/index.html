@@ -12,6 +12,7 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="{% static 'logistics/brand/flamia-icon.svg' %}" type="image/svg+xml">
     <link rel="apple-touch-icon" href="{% static 'logistics/brand/flamia-icon.svg' %}">
+    <link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
     <link rel="stylesheet" href="{% static 'logistics/style.css' %}">
 </head>
 <body data-user-id="{{ request.user.pk }}">
@@ -932,6 +933,8 @@
     <script src="{% static 'logistics/business.js' %}" defer></script>
     <script src="{% static 'logistics/records.js' %}" defer></script>
     <script src="{% static 'logistics/navigation.js' %}" defer></script>
+    <script src="{% static 'vendor/leaflet/leaflet.js' %}" defer></script>
+    <script src="{% static 'logistics/offline-map.js' %}" defer></script>
     <script src="{% static 'logistics/app.js' %}" defer></script>
 </body>
 </html>

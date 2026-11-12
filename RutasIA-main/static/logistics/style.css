@@ -1917,3 +1917,94 @@ body.is-navigating .toast {
         flex: 1;
     }
 }
+
+/* ── Mapa sin conexion ── */
+body.is-offline-map {
+    overflow: hidden;
+}
+
+body.is-offline-map .toast {
+    z-index: 1100;
+}
+
+.offline-map-view {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: #eef2f7;
+}
+
+.offline-map-view[hidden] {
+    display: none;
+}
+
+#offline-map {
+    position: absolute;
+    inset: 0;
+    isolation: isolate;
+}
+
+/* Plain grid when there are no street tiles (no signal). */
+#offline-map.leaflet-container {
+    font-family: inherit;
+    background-color: #eef2f7;
+    background-image:
+        linear-gradient(rgba(148, 163, 184, 0.25) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.25) 1px, transparent 1px);
+    background-size: 48px 48px;
+}
+
+.offline-map-view .leaflet-top {
+    top: 110px;
+}
+
+.offline-map-view .leaflet-bottom {
+    bottom: 100px;
+}
+
+.offline-map-view [hidden] {
+    display: none !important;
+}
+
+.offline-stop-pin {
+    display: grid;
+    place-items: center;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    font-weight: 800;
+    color: #ffffff;
+    background: #ef4444;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.4);
+}
+
+.offline-stop-pin.is-done {
+    background: #16a34a;
+}
+
+.offline-driver-arrow {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    transition: transform 300ms ease;
+}
+
+.offline-driver-arrow svg {
+    width: 30px;
+    height: 30px;
+    fill: var(--primary);
+    stroke: #ffffff;
+    stroke-width: 2;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 2px 3px rgba(15, 23, 42, 0.45));
+}
+
+@media (max-width: 600px) {
+    .offline-map-view .leaflet-top {
+        top: 150px;
+    }
+
+    .offline-map-view .leaflet-bottom {
+        bottom: 150px;
+    }
+}

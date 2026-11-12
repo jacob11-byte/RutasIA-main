@@ -1080,6 +1080,7 @@ async function focusMapTripById(tripId, options = {}) {
         const result = await fetchRoadGeometryGoogleMaps(waypointCoords);
         if (selectedMapTripId !== tripId) return;
         lastDirectionsResult = result;
+        if (typeof saveOfflineRoute === "function") saveOfflineRoute(tripId, result.routes[0].overview_path);
         directionsRenderer.setDirections(result);
         addWaypointMarkers();
         if (shouldFit && result.routes[0]?.bounds) {

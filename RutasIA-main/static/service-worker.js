@@ -1,8 +1,9 @@
-const STATIC_CACHE = "flamia-static-v10";
+const STATIC_CACHE = "flamia-static-v11";
 const SHELL_CACHE = "flamia-shell-v8";
 const APP_SHELL = [
   "/manifest.json", "/static/logistics/style.css", "/static/logistics/app.js",
   "/static/logistics/offline.js", "/static/logistics/location.js", "/static/logistics/business.js", "/static/logistics/records.js", "/static/logistics/navigation.js",
+  "/static/logistics/offline-map.js", "/static/vendor/leaflet/leaflet.js", "/static/vendor/leaflet/leaflet.css",
   "/static/logistics/brand/flamia-logo.svg", "/static/logistics/brand/flamia-icon.svg"
 ];
 self.addEventListener("install", event => {

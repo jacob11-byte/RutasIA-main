@@ -241,6 +241,7 @@ async function navLoadRoute(origin, stops) {
     if (!nav) return;
     nav.stops = stops;
     nav.steps = steps;
+    if (typeof saveOfflineRoute === "function") saveOfflineRoute(nav.trip.id, steps.flatMap((step) => step.path));
     nav.stepIndex = 0;
     nav.arrivals = new Set();
     nav.arrivedLeg = null;

@@ -381,9 +381,12 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         self.assertFalse(self.page.evaluate("window.hacked === 1"))
         self.assertEqual((result["near"], result["far"]), ("230 m", "1.5 km"))
         self.tab("map")
+        # Without Google Maps, "Navegar ruta" opens the offline map instead of failing.
         self.page.locator("#btn-start-nav").click()
-        self.page.wait_for_function("document.getElementById('toast').textContent.includes('necesita conexion')")
+        self.page.wait_for_function("!document.getElementById('offline-map-view').hidden")
         self.assertFalse(self.page.evaluate("document.body.classList.contains('is-navigating')"))
+        self.page.locator("#offline-map-exit").click()
+        self.assertTrue(self.page.evaluate("document.getElementById('offline-map-view').hidden"))
 
     def test_order_records_departure_gps(self):
         self.tab("orders")
@@ -397,6 +400,64 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         order = Order.objects.exclude(departure_latitude=None).get()
         self.assertEqual(str(order.departure_latitude), "14.634915")
         self.assertEqual(order.departure_accuracy_m, 10)
+
+    def test_driver_offline_map_follows_gps_and_registers_arrival(self):
+        driver = Driver.objects.create(user=self.user, name="Repartidor", license_number="OFF-01")
+        self.user.profile.role = "driver"
+        self.user.profile.save()
+        self.trip.driver = driver
+        self.trip.save(update_fields=["driver"])
+        if self.trip.status == "planned":
+            TripLifecycleService.start_trip(self.trip)
+        self.page.reload()
+        self.page.wait_for_function("typeof state !== 'undefined' && state.currentUser?.role === 'driver' && state.trips.length > 0")
+        stop = self.trip.stops.get()
+        # The driver starts about 640 m away from the store, without signal.
+        self.context.set_geolocation({"latitude": 14.63, "longitude": -90.51, "accuracy": 10})
+        self.context.set_offline(True)
+        self.tab("map")
+        self.page.locator("#btn-offline-map").click()
+        self.page.wait_for_function("offlineView && offlineView.position")
+        banner = self.page.locator("#offline-map-banner").inner_text()
+        self.assertIn("Cliente base", banner)
+        self.assertIn("640 m", banner)
+        self.assertTrue(self.page.evaluate("document.getElementById('offline-map-deliver').hidden"))
+        self.assertIn("lineas rectas", self.page.locator("#offline-map-source").inner_text())
+        # The driver reaches the store: GPS keeps working without internet.
+        self.context.set_geolocation({"latitude": float(stop.latitude), "longitude": float(stop.longitude), "accuracy": 10})
+        self.page.wait_for_function("!document.getElementById('offline-map-deliver').hidden")
+        self.page.locator("#offline-map-deliver").click()
+        self.page.locator("#btn-confirm-arrival").click()
+        self.queue_count(1)
+        self.context.set_offline(False)
+        self.page.evaluate("syncPendingData()")
+        self.queue_count(0)
+        stop.refresh_from_db()
+        self.assertEqual(stop.status, "delivered")
+        self.assertEqual(stop.delivery_accuracy_m, 10)
+        self.assertEqual(self.errors, [])
+
+    def test_seller_registers_store_offline(self):
+        self.user.profile.role = "seller"
+        self.user.profile.save()
+        self.page.reload()
+        self.page.wait_for_function("typeof state !== 'undefined' && state.currentUser?.role === 'seller'")
+        self.context.set_offline(True)
+        self.tab("stores")
+        self.page.locator('#store-form [name="name"]').fill("Tienda del cobrador")
+        self.page.locator('#store-form [name="municipality"]').fill("Mixco")
+        self.page.locator('#store-form [name="neighborhood"]').fill("Zona 1")
+        self.page.locator("#store-department").select_option(str(self.department.pk))
+        self.page.locator("#btn-store-gps").click()
+        self.page.wait_for_function("document.querySelector('#store-gps-status').textContent.includes('10 m')")
+        self.page.locator('#store-form [type="submit"]').click()
+        self.queue_count(1)
+        self.context.set_offline(False)
+        self.page.evaluate("syncPendingData()")
+        self.queue_count(0)
+        store = Store.objects.get(name="Tienda del cobrador")
+        self.assertEqual(store.created_by, self.user)
+        self.assertEqual(store.location_accuracy_m, 10)
 
 
 class WebKitOfflineTests(OfflineBrowserTests):
