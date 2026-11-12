@@ -557,6 +557,7 @@ def api_orders(request: HttpRequest):
             return _error("El pedido debe incluir al menos un producto de agua o gas.")
         if payload.get("priority", Order.Priority.NORMAL) not in Order.Priority.values:
             return _error("Prioridad invalida.")
+        departure = parse_location(payload, prefix="departure_") or (None, None, None, None)
         order = Order.objects.create(
             origin=origin,
             destination=destination,
@@ -567,6 +568,10 @@ def api_orders(request: HttpRequest):
             requested_for=operation_time(payload.get("occurred_at")),
             created_by=request.user,
             status=Order.Status.PENDING,
+            departure_latitude=departure[0],
+            departure_longitude=departure[1],
+            departure_accuracy_m=departure[2],
+            departure_captured_at=departure[3],
         )
         if items_payload:
             total_weight = Decimal("0.00")

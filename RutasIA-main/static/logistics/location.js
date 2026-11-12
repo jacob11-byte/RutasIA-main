@@ -1,6 +1,7 @@
 /* Location capture is independent of the map and never substitutes a simulated fix. */
 let storeLocationCapture = null;
 let storeLocationMessage = "";
+let orderDepartureCapture = null;
 let deliveryLocationCapture = null;
 const DELIVERY_GEOFENCE_METERS = 120;
 const MAX_DELIVERY_ACCURACY_METERS = 100;
@@ -80,6 +81,22 @@ async function fillStoreGpsFromDevice() {
     finally { button.disabled = false; }
 }
 
+async function fillOrderDepartureFromDevice() {
+    const button = document.getElementById("btn-order-departure-gps");
+    const status = document.getElementById("order-departure-status");
+    button.disabled = true;
+    status.textContent = "Permite la ubicacion cuando el navegador lo solicite. Buscando una lectura precisa...";
+    try {
+        const location = await captureDeviceLocation();
+        const form = document.getElementById("order-form");
+        form.elements.departure_latitude.value = location.latitude;
+        form.elements.departure_longitude.value = location.longitude;
+        orderDepartureCapture = location;
+        status.textContent = `Salida capturada: precision aproximada de ${Math.ceil(location.accuracy_m)} m.`;
+    } catch (error) { status.textContent = error.message; showToast(error.message, true); }
+    finally { button.disabled = false; }
+}
+
 function renderDeliveryTripSelect() {
     const select = document.getElementById("delivery-trip");
     if (!select) return;
@@ -139,6 +156,11 @@ function initDeliveryLocation() {
     });
     for (const input of document.querySelectorAll('#store-form input[name="latitude"], #store-form input[name="longitude"]')) {
         input.addEventListener("input", () => { storeLocationCapture = null; });
+    }
+    document.getElementById("btn-order-departure-gps").addEventListener("click", fillOrderDepartureFromDevice);
+    // Typed coordinates have no GPS accuracy or capture time.
+    for (const input of document.querySelectorAll('#order-form input[name="departure_latitude"], #order-form input[name="departure_longitude"]')) {
+        input.addEventListener("input", () => { orderDepartureCapture = null; });
     }
     document.getElementById("delivery-location-form").addEventListener("submit", async event => {
         event.preventDefault();

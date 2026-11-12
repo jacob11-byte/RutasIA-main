@@ -385,6 +385,19 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         self.page.wait_for_function("document.getElementById('toast').textContent.includes('necesita conexion')")
         self.assertFalse(self.page.evaluate("document.body.classList.contains('is-navigating')"))
 
+    def test_order_records_departure_gps(self):
+        self.tab("orders")
+        self.page.locator("#order-store").select_option(str(self.store.pk))
+        self.page.locator("#order-origin").select_option(str(self.department.pk))
+        self.page.locator("#order-product").select_option(str(self.product.pk))
+        self.page.locator("#btn-order-departure-gps").click()
+        self.page.wait_for_function("document.querySelector('#order-departure-status').textContent.includes('10 m')")
+        self.page.locator('#order-form [type="submit"]').click()
+        self.page.wait_for_function("document.getElementById('orders-body').textContent.includes('GPS ±10 m')")
+        order = Order.objects.exclude(departure_latitude=None).get()
+        self.assertEqual(str(order.departure_latitude), "14.634915")
+        self.assertEqual(order.departure_accuracy_m, 10)
+
 
 class WebKitOfflineTests(OfflineBrowserTests):
     engine = "webkit"

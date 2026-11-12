@@ -692,7 +692,9 @@ function renderOrdersFiltered() {
             "beforeend",
             `<tr>
                 <td>${escapeHtml(o.code)}</td>
-                <td>${escapeHtml(o.origin_name)}</td>
+                <td>${escapeHtml(o.origin_name)}${o.departure_latitude != null
+                    ? `<br><small>Salida: ${Number(o.departure_latitude).toFixed(5)}, ${Number(o.departure_longitude).toFixed(5)}${o.departure_accuracy_m != null ? ` · GPS ±${Math.ceil(o.departure_accuracy_m)} m` : " · manual"}</small>`
+                    : ""}</td>
                 <td>${escapeHtml(o.store_name || o.destination_name)}</td>
                 <td>${o.weight_kg.toFixed(2)} kg</td>
                 <td>${escapeHtml(products)}</td>
@@ -1677,9 +1679,28 @@ async function onOrderSubmit(event) {
         }],
         priority: form.priority.value
     };
+    const departureLatitude = form.departure_latitude.value;
+    const departureLongitude = form.departure_longitude.value;
+    if (Boolean(departureLatitude) !== Boolean(departureLongitude)) {
+        showToast("Completa latitud y longitud de salida, o deja ambas vacias.", true);
+        return;
+    }
+    if (orderDepartureCapture?.accuracy_m > 100 && !confirm("La precision de la salida supera los 100 metros. ¿Deseas guardarla de todos modos?")) return;
+    if (departureLatitude) {
+        Object.assign(payload, {
+            departure_latitude: Number(departureLatitude),
+            departure_longitude: Number(departureLongitude),
+            ...(orderDepartureCapture ? {
+                departure_accuracy_m: orderDepartureCapture.accuracy_m,
+                departure_captured_at: orderDepartureCapture.captured_at
+            } : {})
+        });
+    }
     try {
         const response = await postJsonOrQueue(API.orders, payload, "Crear entrega");
         form.reset();
+        orderDepartureCapture = null;
+        document.getElementById("order-departure-status").textContent = "";
         form.destination_id.disabled = false;
         showToast(response.queued ? "Entrega guardada sin conexion. Se sincronizara despues." : "Entrega creada.");
         if (response.queued) {

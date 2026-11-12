@@ -236,6 +236,11 @@ class Order(TimestampedModel):
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     requested_for = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_orders")
+    # Exact departure point inside the origin zone: device GPS or typed coordinates (no accuracy).
+    departure_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    departure_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    departure_accuracy_m = models.FloatField(null=True, blank=True)
+    departure_captured_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
