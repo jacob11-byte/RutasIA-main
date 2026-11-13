@@ -203,6 +203,53 @@ class Product(TimestampedModel):
         return f"{self.name}{label}"
 
 
+class InventoryItem(TimestampedModel):
+    product = models.OneToOneField(Product, on_delete=models.CASCADE, related_name="inventory")
+    quantity = models.PositiveIntegerField(default=0)
+    minimum_quantity = models.PositiveIntegerField(default=0)
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inventory_updates",
+    )
+
+    class Meta:
+        ordering = ["product__product_type", "product__name"]
+
+    def __str__(self) -> str:
+        return f"{self.product}: {self.quantity} unidades"
+
+
+class InventoryMovement(models.Model):
+    class MovementType(models.TextChoices):
+        SET = "set", "Conteo fisico"
+        ENTRY = "entry", "Entrada"
+        EXIT = "exit", "Salida"
+
+    inventory = models.ForeignKey(InventoryItem, on_delete=models.CASCADE, related_name="movements")
+    movement_type = models.CharField(max_length=10, choices=MovementType.choices)
+    quantity = models.PositiveIntegerField()
+    previous_quantity = models.PositiveIntegerField()
+    resulting_quantity = models.PositiveIntegerField()
+    reason = models.CharField(max_length=240)
+    recorded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inventory_movements",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.inventory.product}: {self.previous_quantity} -> {self.resulting_quantity}"
+
+
 class Order(TimestampedModel):
     class Status(models.TextChoices):
         PENDING = "pending", "Pendiente"

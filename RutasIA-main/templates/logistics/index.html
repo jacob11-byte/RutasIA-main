@@ -38,6 +38,7 @@
                 <button class="tab" data-tab="payments"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v.01M18 14v.01"/></svg><span>Cobros</span></button>
                 <button class="tab" data-tab="stores"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 4h15L21 9H3Z"/><path d="M4 9v11h16V9"/><path d="M9.5 20v-6h5v6"/></svg><span>Tiendas</span></button>
                 <button class="tab" data-tab="products"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/></svg><span>Productos</span></button>
+                <button class="tab" data-tab="inventory"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 8 8-4 8 4-8 4Z"/><path d="m4 8v8l8 4 8-4V8M12 12v8"/></svg><span>Inventario</span></button>
 
                 <p class="nav-label">Recursos</p>
                 <button class="tab" data-tab="vehicles"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 17V6a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v11h2"/><path d="M14 9h4l4 4v4h-2"/><path d="M9 17h6"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/></svg><span>Vehiculos</span></button>
@@ -346,8 +347,9 @@
             <section id="tab-products" class="panel">
                 <div class="split">
                     <article class="form-card" id="product-form-card">
-                        <h3>Registrar producto</h3>
+                        <h3 id="product-form-title">Registrar producto</h3>
                         <form id="product-form">
+                            <input type="hidden" name="product_id">
                             <label>Nombre
                                 <input name="name" required placeholder="Garrafon de agua, cilindro de gas">
                             </label>
@@ -367,7 +369,10 @@
                                 <input name="unit_weight_kg" type="number" step="0.01" min="0.01" value="1.00" required>
                             </label>
                             <label class="check-inline"><input type="checkbox" name="is_active" checked> Activo</label>
-                            <button type="submit">Guardar producto</button>
+                            <div class="form-actions">
+                                <button type="submit" id="product-submit">Guardar producto</button>
+                                <button type="button" class="btn-secondary" id="btn-cancel-product-edit" style="display:none">Cancelar edición</button>
+                            </div>
                         </form>
                     </article>
                     <article class="table-card">
@@ -388,6 +393,61 @@
                         </table>
                     </article>
                 </div>
+            </section>
+
+            <!-- INVENTORY -->
+            <section id="tab-inventory" class="panel">
+                <div class="cards-grid inventory-summary">
+                    <article class="metric-card"><h3>Cilindros de gas</h3><p id="inventory-total-gas">0</p></article>
+                    <article class="metric-card"><h3>Agua purificada</h3><p id="inventory-total-water">0</p></article>
+                    <article class="metric-card"><h3>Existencias bajas</h3><p id="inventory-low-stock">0</p></article>
+                </div>
+                <div class="split inventory-layout">
+                    <article class="form-card" id="inventory-form-card">
+                        <h3>Ajustar inventario</h3>
+                        <p class="form-help">Registra un conteo físico, una entrada de bodega o una salida. Cada cambio queda en el historial.</p>
+                        <form id="inventory-form">
+                            <label>Producto
+                                <select name="product_id" id="inventory-product" required></select>
+                            </label>
+                            <label>Tipo de movimiento
+                                <select name="movement_type" required>
+                                    <option value="set">Establecer conteo exacto</option>
+                                    <option value="entry">Entrada de inventario</option>
+                                    <option value="exit">Salida de inventario</option>
+                                </select>
+                            </label>
+                            <label>Cantidad de unidades
+                                <input name="quantity" type="number" step="1" min="0" required>
+                            </label>
+                            <label>Existencia mínima para alerta
+                                <input name="minimum_quantity" type="number" step="1" min="0" value="0" required>
+                            </label>
+                            <label>Motivo
+                                <input name="reason" maxlength="240" required placeholder="Conteo inicial, compra a proveedor, carga de camión">
+                            </label>
+                            <button type="submit">Guardar ajuste</button>
+                        </form>
+                    </article>
+                    <article class="table-card">
+                        <h3>Existencias actuales</h3>
+                        <div class="table-scroll">
+                            <table>
+                                <thead><tr><th>Producto</th><th>Tipo</th><th>Disponible</th><th>Mínimo</th><th>Estado</th><th>Actualización</th></tr></thead>
+                                <tbody id="inventory-body"></tbody>
+                            </table>
+                        </div>
+                    </article>
+                </div>
+                <article class="table-card inventory-history-card">
+                    <h3>Historial de movimientos</h3>
+                    <div class="table-scroll">
+                        <table>
+                            <thead><tr><th>Fecha</th><th>Producto</th><th>Movimiento</th><th>Cantidad</th><th>Antes</th><th>Después</th><th>Motivo</th><th>Registrado por</th></tr></thead>
+                            <tbody id="inventory-movements-body"></tbody>
+                        </table>
+                    </div>
+                </article>
             </section>
 
             <!-- DRIVERS -->

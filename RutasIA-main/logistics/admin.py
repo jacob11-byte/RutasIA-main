@@ -2,6 +2,8 @@ from django.contrib import admin
 from .models import (
     Department,
     Driver,
+    InventoryItem,
+    InventoryMovement,
     Order,
     OrderItem,
     Payment,
@@ -63,6 +65,21 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ("name", "presentation", "product_type", "unit_price", "unit_weight_kg", "is_active")
     list_filter = ("product_type", "is_active")
     search_fields = ("name", "presentation")
+
+
+class InventoryMovementInline(admin.TabularInline):
+    model = InventoryMovement
+    extra = 0
+    readonly_fields = ("movement_type", "quantity", "previous_quantity", "resulting_quantity", "reason", "recorded_by", "created_at")
+    can_delete = False
+
+
+@admin.register(InventoryItem)
+class InventoryItemAdmin(admin.ModelAdmin):
+    list_display = ("product", "quantity", "minimum_quantity", "updated_by", "updated_at")
+    list_filter = ("product__product_type",)
+    search_fields = ("product__name", "product__presentation")
+    inlines = [InventoryMovementInline]
 
 
 class OrderItemInline(admin.TabularInline):

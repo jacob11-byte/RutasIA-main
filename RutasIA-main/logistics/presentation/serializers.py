@@ -9,6 +9,8 @@ from django.utils import timezone
 from logistics.models import (
     Department,
     Driver,
+    InventoryItem,
+    InventoryMovement,
     Order,
     OrderItem,
     Payment,
@@ -130,6 +132,48 @@ def _serialize_product(product: Product) -> dict:
         "unit_price": _as_float(product.unit_price),
         "unit_weight_kg": _as_float(product.unit_weight_kg),
         "is_active": product.is_active,
+    }
+
+
+def _serialize_inventory_item(item: InventoryItem | None, product: Product) -> dict:
+    quantity = item.quantity if item else 0
+    minimum_quantity = item.minimum_quantity if item else 0
+    return {
+        "id": item.id if item else None,
+        "product_id": product.id,
+        "product_name": product.name,
+        "product_type": product.product_type,
+        "presentation": product.presentation,
+        "is_active": product.is_active,
+        "quantity": quantity,
+        "minimum_quantity": minimum_quantity,
+        "low_stock": minimum_quantity > 0 and quantity <= minimum_quantity,
+        "updated_at": item.updated_at.isoformat() if item else None,
+        "updated_by_name": (
+            item.updated_by.get_full_name() or item.updated_by.username
+            if item and item.updated_by
+            else None
+        ),
+    }
+
+
+def _serialize_inventory_movement(movement: InventoryMovement) -> dict:
+    return {
+        "id": movement.id,
+        "product_id": movement.inventory.product_id,
+        "product_name": movement.inventory.product.name,
+        "presentation": movement.inventory.product.presentation,
+        "movement_type": movement.movement_type,
+        "quantity": movement.quantity,
+        "previous_quantity": movement.previous_quantity,
+        "resulting_quantity": movement.resulting_quantity,
+        "reason": movement.reason,
+        "recorded_by_name": (
+            movement.recorded_by.get_full_name() or movement.recorded_by.username
+            if movement.recorded_by
+            else None
+        ),
+        "created_at": movement.created_at.isoformat(),
     }
 
 

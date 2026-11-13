@@ -21,6 +21,8 @@ from logistics.models import (
     Department,
     Driver,
     FuelPrice,
+    InventoryItem,
+    InventoryMovement,
     Order,
     OrderItem,
     Payment,
@@ -53,6 +55,8 @@ from logistics.presentation.serializers import (
     _require_role,
     _serialize_driver,
     _serialize_event,
+    _serialize_inventory_item,
+    _serialize_inventory_movement,
     _serialize_order,
     _serialize_payment,
     _serialize_product,
@@ -429,6 +433,119 @@ def api_products(request: HttpRequest):
     except KeyError as exc:
         return _error(f"Falta el campo requerido: {exc.args[0]}")
     except Exception as exc:
+        return _error(str(exc))
+
+
+@login_required
+@require_http_methods(["POST"])
+@role_policy
+@idempotent
+def api_product_detail(request: HttpRequest, product_id: int):
+    product = get_object_or_404(Product, pk=product_id)
+    try:
+        payload = _parse_json(request)
+        product_type = payload.get("product_type", product.product_type)
+        if product_type not in Product.Type.values:
+            return _error("Tipo de producto invalido.")
+        product.name = required_text(payload.get("name", product.name), "Nombre")
+        product.product_type = product_type
+        product.presentation = str(payload.get("presentation", product.presentation)).strip()
+        product.unit_price = decimal_field(payload.get("unit_price", product.unit_price), "Precio")
+        product.unit_weight_kg = decimal_field(payload.get("unit_weight_kg", product.unit_weight_kg), "Peso")
+        product.is_active = bool(payload.get("is_active", product.is_active))
+        product.save()
+        return _ok({"product": _serialize_product(product)})
+    except PlanningError as exc:
+        return _error(str(exc))
+
+
+def _inventory_integer(value, label: str, *, allow_zero: bool = True) -> int:
+    try:
+        number = Decimal(str(value))
+        if not number.is_finite() or number != number.to_integral_value():
+            raise ValueError
+        result = int(number)
+        if result < 0 or (result == 0 and not allow_zero):
+            raise ValueError
+        return result
+    except (ValueError, TypeError):
+        qualifier = "cero o un entero positivo" if allow_zero else "un entero mayor que cero"
+        raise PlanningError(f"{label}: utiliza {qualifier}.")
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@role_policy
+@idempotent
+def api_inventory(request: HttpRequest):
+    if request.method == "GET":
+        products = list(Product.objects.all())
+        inventory_by_product = {
+            item.product_id: item
+            for item in InventoryItem.objects.select_related("product", "updated_by")
+        }
+        items = [_serialize_inventory_item(inventory_by_product.get(product.id), product) for product in products]
+        movements = (
+            InventoryMovement.objects.select_related("inventory__product", "recorded_by")
+            .all()[:30]
+        )
+        return _ok({
+            "inventory": items,
+            "summary": {
+                "gas": sum(item["quantity"] for item in items if item["product_type"] == Product.Type.GAS and item["is_active"]),
+                "water": sum(item["quantity"] for item in items if item["product_type"] == Product.Type.WATER and item["is_active"]),
+                "low_stock": sum(1 for item in items if item["low_stock"] and item["is_active"]),
+            },
+            "movements": [_serialize_inventory_movement(movement) for movement in movements],
+        })
+
+    try:
+        payload = _parse_json(request)
+        product = Product.objects.select_for_update().get(pk=payload["product_id"])
+        movement_type = payload.get("movement_type", InventoryMovement.MovementType.SET)
+        if movement_type not in InventoryMovement.MovementType.values:
+            return _error("Tipo de movimiento de inventario invalido.")
+        quantity = _inventory_integer(
+            payload.get("quantity"),
+            "Cantidad",
+            allow_zero=movement_type == InventoryMovement.MovementType.SET,
+        )
+        minimum_quantity = _inventory_integer(payload.get("minimum_quantity", 0), "Existencia minima")
+        reason = required_text(payload.get("reason"), "Motivo del ajuste")
+
+        item, _ = InventoryItem.objects.select_for_update().get_or_create(product=product)
+        previous_quantity = item.quantity
+        if movement_type == InventoryMovement.MovementType.SET:
+            resulting_quantity = quantity
+        elif movement_type == InventoryMovement.MovementType.ENTRY:
+            resulting_quantity = previous_quantity + quantity
+        else:
+            resulting_quantity = previous_quantity - quantity
+            if resulting_quantity < 0:
+                return _error(f"No puedes retirar {quantity} unidades; solo hay {previous_quantity} disponibles.")
+
+        item.quantity = resulting_quantity
+        item.minimum_quantity = minimum_quantity
+        item.updated_by = request.user
+        item.save()
+        movement = InventoryMovement.objects.create(
+            inventory=item,
+            movement_type=movement_type,
+            quantity=quantity,
+            previous_quantity=previous_quantity,
+            resulting_quantity=resulting_quantity,
+            reason=reason,
+            recorded_by=request.user,
+        )
+        return _ok({
+            "inventory_item": _serialize_inventory_item(item, product),
+            "movement": _serialize_inventory_movement(movement),
+        })
+    except KeyError as exc:
+        return _error(f"Falta el campo requerido: {exc.args[0]}")
+    except Product.DoesNotExist:
+        return _error("Producto invalido.")
+    except PlanningError as exc:
         return _error(str(exc))
 
 

@@ -7,6 +7,7 @@ const API = {
     drivers: "/api/drivers/",
     stores: "/api/stores/",
     products: "/api/products/",
+    inventory: "/api/inventory/",
     vehicles: "/api/vehicles/",
     orders: "/api/orders/",
     trips: "/api/trips/",
@@ -55,6 +56,9 @@ const state = {
     drivers: [],
     stores: [],
     products: [],
+    inventory: [],
+    inventorySummary: { gas: 0, water: 0, low_stock: 0 },
+    inventoryMovements: [],
     vehicles: [],
     orders: [],
     trips: [],
@@ -79,6 +83,7 @@ let lastDirectionsResult = null;
 let deliverySimTimer = null;
 let isSyncingOfflineQueue = false;
 let editingStoreId = null;
+let editingProductId = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
     initPwa();
@@ -140,6 +145,10 @@ function bindForms() {
     document.querySelector("#order-form input[name='quantity']").addEventListener("input", updateOrderEstimate);
     document.getElementById("driver-form").addEventListener("submit", onDriverSubmit);
     document.getElementById("product-form").addEventListener("submit", onProductSubmit);
+    document.getElementById("btn-cancel-product-edit").addEventListener("click", cancelProductEdit);
+    document.getElementById("products-body").addEventListener("click", onProductsActionClick);
+    document.getElementById("inventory-form").addEventListener("submit", onInventorySubmit);
+    document.getElementById("inventory-product").addEventListener("change", fillInventoryMinimum);
     bindSafeSubmit("order-form", onOrderSubmit);
     document.getElementById("payment-store").addEventListener("change", renderPaymentOrderSelect);
     bindSafeSubmit("payment-form", onPaymentSubmit);
@@ -303,12 +312,13 @@ function bindFilters() {
 
 async function reloadAll() {
     try {
-        const [meRes, deptRes, connRes, storeRes, productRes, driverRes, vehicleRes, orderRes, tripRes, paymentRes, balanceRes, reportRes] = await Promise.all([
+        const [meRes, deptRes, connRes, storeRes, productRes, inventoryRes, driverRes, vehicleRes, orderRes, tripRes, paymentRes, balanceRes, reportRes] = await Promise.all([
             getJson(API.me),
             getJson(API.departments),
             getJson(API.connections),
             getJson(API.stores),
             getJson(API.products),
+            getJson(API.inventory),
             getJson(API.drivers),
             getJson(API.vehicles),
             getJson(API.orders),
@@ -322,6 +332,9 @@ async function reloadAll() {
         state.connections = connRes.connections;
         state.stores = storeRes.stores;
         state.products = productRes.products;
+        state.inventory = inventoryRes.inventory;
+        state.inventorySummary = inventoryRes.summary;
+        state.inventoryMovements = inventoryRes.movements;
         state.drivers = driverRes.drivers;
         state.vehicles = vehicleRes.vehicles;
         state.orders = orderRes.orders;
@@ -372,6 +385,7 @@ function renderAll() {
     renderStoreSelects();
     renderProducts();
     renderProductSelects();
+    renderInventory();
     updateOrderEstimate();
     renderDriverSelects();
     renderVehicles();
@@ -409,9 +423,9 @@ function renderUserInfo() {
     const isDriver = user.role === "driver";
 
     const allowedTabs = {
-        admin: ["dashboard", "planner", "trips", "map", "orders", "payments", "stores", "products", "vehicles", "drivers", "reports", "departments", "users"],
-        supervisor: ["dashboard", "planner", "trips", "map", "orders", "payments", "stores", "products", "vehicles", "drivers", "reports", "departments"],
-        seller: ["dashboard", "orders", "payments", "stores"],
+        admin: ["dashboard", "planner", "trips", "map", "orders", "payments", "stores", "products", "inventory", "vehicles", "drivers", "reports", "departments", "users"],
+        supervisor: ["dashboard", "planner", "trips", "map", "orders", "payments", "stores", "products", "inventory", "vehicles", "drivers", "reports", "departments"],
+        seller: ["dashboard", "orders", "payments", "stores", "inventory"],
         driver: ["dashboard", "trips", "map", "payments"],
     }[user.role] || ["dashboard"];
     document.querySelectorAll(".tab[data-tab]").forEach(button => {
@@ -423,6 +437,7 @@ function renderUserInfo() {
     document.getElementById("vehicle-form-card").style.display = isSupervisor ? "" : "none";
     document.getElementById("store-form-card").style.display = (isSupervisor || isSeller) ? "" : "none";
     document.getElementById("product-form-card").style.display = isSupervisor ? "" : "none";
+    document.getElementById("inventory-form-card").style.display = isSupervisor ? "" : "none";
     document.getElementById("driver-form-card").style.display = isSupervisor ? "" : "none";
     document.getElementById("order-form-card").style.display = (isSupervisor || isSeller) ? "" : "none";
     document.getElementById("department-form-card").style.display = isSupervisor ? "" : "none";
@@ -554,10 +569,58 @@ function renderProducts() {
                 <td>Q ${Number(product.unit_price).toFixed(2)}</td>
                 <td>${Number(product.unit_weight_kg).toFixed(2)} kg</td>
                 <td>${statusChip(product.is_active ? "active" : "inactive")}</td>
-                <td>${deleteButton("products", product.id, product.name) || "-"}</td>
+                <td>${(["admin", "supervisor"].includes(state.currentUser?.role) ? `<button type="button" class="btn-inline" data-edit-product="${product.id}">Editar precio</button> ` : "") + (deleteButton("products", product.id, product.name) || "") || "-"}</td>
             </tr>`
         );
     });
+}
+
+function renderInventory() {
+    setText("inventory-total-gas", state.inventorySummary.gas || 0);
+    setText("inventory-total-water", state.inventorySummary.water || 0);
+    setText("inventory-low-stock", state.inventorySummary.low_stock || 0);
+
+    const productSelect = document.getElementById("inventory-product");
+    const previousProduct = productSelect.value;
+    productSelect.innerHTML = [
+        `<option value="">Seleccione producto...</option>`,
+        ...state.products.map(product => `<option value="${product.id}">${escapeHtml(`${product.name} ${product.presentation || ""}`.trim())}</option>`)
+    ].join("");
+    if (previousProduct) productSelect.value = previousProduct;
+
+    const body = document.getElementById("inventory-body");
+    if (!state.inventory.length) {
+        body.innerHTML = `<tr><td colspan="6">No hay productos para controlar.</td></tr>`;
+    } else {
+        body.innerHTML = state.inventory.map(item => `<tr class="${item.low_stock ? "inventory-low-row" : ""}">
+            <td><strong>${escapeHtml(item.product_name)}</strong><br><small>${escapeHtml(item.presentation || "-")}</small></td>
+            <td>${productTypeLabel(item.product_type)}</td>
+            <td><strong>${item.quantity}</strong> unidades</td>
+            <td>${item.minimum_quantity}</td>
+            <td>${item.low_stock ? `<span class="inventory-alert">Existencia baja</span>` : `<span class="inventory-ok">Disponible</span>`}</td>
+            <td>${item.updated_at ? `${escapeHtml(new Date(item.updated_at).toLocaleString("es-GT"))}<br><small>${escapeHtml(item.updated_by_name || "-")}</small>` : "Sin ajustes"}</td>
+        </tr>`).join("");
+    }
+
+    const movementsBody = document.getElementById("inventory-movements-body");
+    if (!state.inventoryMovements.length) {
+        movementsBody.innerHTML = `<tr><td colspan="8">Todavía no hay movimientos de inventario.</td></tr>`;
+    } else {
+        const movementLabels = { set: "Conteo físico", entry: "Entrada", exit: "Salida" };
+        movementsBody.innerHTML = state.inventoryMovements.map(movement => `<tr>
+            <td>${escapeHtml(new Date(movement.created_at).toLocaleString("es-GT"))}</td>
+            <td>${escapeHtml(movement.product_name)}<br><small>${escapeHtml(movement.presentation || "-")}</small></td>
+            <td>${movementLabels[movement.movement_type] || escapeHtml(movement.movement_type)}</td>
+            <td>${movement.quantity}</td><td>${movement.previous_quantity}</td><td><strong>${movement.resulting_quantity}</strong></td>
+            <td>${escapeHtml(movement.reason)}</td><td>${escapeHtml(movement.recorded_by_name || "-")}</td>
+        </tr>`).join("");
+    }
+}
+
+function fillInventoryMinimum() {
+    const form = document.getElementById("inventory-form");
+    const item = state.inventory.find(row => String(row.product_id) === form.product_id.value);
+    if (item) form.minimum_quantity.value = item.minimum_quantity;
 }
 
 function renderProductSelects() {
@@ -1647,12 +1710,68 @@ async function onProductSubmit(event) {
         is_active: form.is_active.checked
     };
     try {
-        await postJson(API.products, payload);
-        form.reset();
-        form.is_active.checked = true;
-        form.unit_weight_kg.value = "1.00";
-        showToast("Producto registrado.");
+        const url = editingProductId ? `${API.products}${editingProductId}/` : API.products;
+        await postJson(url, payload);
+        const message = editingProductId ? "Producto y precio actualizados." : "Producto registrado.";
+        cancelProductEdit();
+        showToast(message);
         await reloadAll();
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
+
+function onProductsActionClick(event) {
+    const button = event.target.closest("[data-edit-product]");
+    if (!button) return;
+    const product = state.products.find(item => item.id === Number(button.dataset.editProduct));
+    if (!product) return;
+    editingProductId = product.id;
+    const form = document.getElementById("product-form");
+    form.product_id.value = product.id;
+    form.name.value = product.name;
+    form.product_type.value = product.product_type;
+    form.presentation.value = product.presentation || "";
+    form.unit_price.value = Number(product.unit_price).toFixed(2);
+    form.unit_weight_kg.value = Number(product.unit_weight_kg).toFixed(2);
+    form.is_active.checked = product.is_active;
+    document.getElementById("product-form-title").textContent = "Editar producto y precio";
+    document.getElementById("product-submit").textContent = "Guardar cambios";
+    document.getElementById("btn-cancel-product-edit").style.display = "";
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelProductEdit() {
+    editingProductId = null;
+    const form = document.getElementById("product-form");
+    form.reset();
+    form.product_id.value = "";
+    form.is_active.checked = true;
+    form.unit_weight_kg.value = "1.00";
+    document.getElementById("product-form-title").textContent = "Registrar producto";
+    document.getElementById("product-submit").textContent = "Guardar producto";
+    document.getElementById("btn-cancel-product-edit").style.display = "none";
+}
+
+async function onInventorySubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = {
+        product_id: Number(form.product_id.value),
+        movement_type: form.movement_type.value,
+        quantity: Number(form.quantity.value),
+        minimum_quantity: Number(form.minimum_quantity.value),
+        reason: form.reason.value.trim()
+    };
+    try {
+        await postJson(API.inventory, payload);
+        const selectedProduct = form.product_id.value;
+        form.reset();
+        form.product_id.value = selectedProduct;
+        form.minimum_quantity.value = "0";
+        showToast("Inventario actualizado y movimiento registrado.");
+        await reloadAll();
+        fillInventoryMinimum();
     } catch (error) {
         showToast(error.message, true);
     }

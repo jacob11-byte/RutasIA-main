@@ -573,6 +573,59 @@ details.pending-panel[open] {
     font-size: 1.35rem;
 }
 
+.inventory-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-bottom: 1rem;
+}
+
+.inventory-layout {
+    margin-bottom: 1rem;
+}
+
+.inventory-history-card {
+    padding: 1rem;
+}
+
+.inventory-low-row {
+    background: #fff7ed;
+}
+
+.inventory-alert,
+.inventory-ok {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.inventory-alert {
+    color: #9a3412;
+    background: #ffedd5;
+    border: 1px solid #fed7aa;
+}
+
+.inventory-ok {
+    color: #166534;
+    background: #dcfce7;
+    border: 1px solid #bbf7d0;
+}
+
+.form-help {
+    margin: -0.45rem 0 0.85rem;
+    color: var(--ink-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+    .inventory-summary {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ── Precio de combustible ── */
 .fuel-price-card {
     padding: 1.1rem 1.25rem;

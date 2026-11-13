@@ -459,6 +459,30 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(store.created_by, self.user)
         self.assertEqual(store.location_accuracy_m, 10)
 
+    def test_supervisor_edits_product_price_and_adjusts_inventory(self):
+        self.tab("products")
+        self.page.locator(f'[data-edit-product="{self.product.pk}"]').click()
+        self.page.locator('#product-form [name="unit_price"]').fill("24.50")
+        self.page.locator("#product-submit").click()
+        self.page.wait_for_function(
+            "id => state.products.some(product => product.id === id && product.unit_price === 24.5)",
+            arg=self.product.pk,
+        )
+
+        self.tab("inventory")
+        self.page.locator("#inventory-product").select_option(str(self.product.pk))
+        self.page.locator('#inventory-form [name="quantity"]').fill("40")
+        self.page.locator('#inventory-form [name="minimum_quantity"]').fill("10")
+        self.page.locator('#inventory-form [name="reason"]').fill("Conteo inicial de bodega")
+        self.page.locator('#inventory-form [type="submit"]').click()
+        self.page.wait_for_function(
+            "id => state.inventory.some(item => item.product_id === id && item.quantity === 40) && document.querySelector('#inventory-body').textContent.includes('40 unidades')",
+            arg=self.product.pk,
+        )
+        self.assertIn("40 unidades", self.page.locator("#inventory-body").inner_text())
+        self.assertIn("Conteo inicial de bodega", self.page.locator("#inventory-movements-body").inner_text())
+        self.assertEqual(self.errors, [])
+
 
 class WebKitOfflineTests(OfflineBrowserTests):
     engine = "webkit"

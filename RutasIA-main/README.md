@@ -13,6 +13,7 @@ Flamia resuelve el problema de organizar rutas de reparto, entregas y cobros par
 - Calcula rutas óptimas usando el algoritmo de **Dijkstra** (grafo de distancias viales) o **A\*** (con heurística Haversine).
 - Visualiza el recorrido vial con **Google Maps**, navegación giro a giro, marcador GPS del camión y confirmación de llegada mediante geocerca.
 - Gestiona el ciclo de vida completo de un viaje: planificación → en progreso → completado / cancelado.
+- Administra productos de agua y gas, cambios de precios y un inventario por presentación con conteos, entradas, salidas, mínimos e historial de movimientos.
 - Calcula costos estimados de combustible (GTQ/galón) y costo por kilómetro del vehículo.
 - Controla acceso por roles: Administrador, Supervisor, Vendedor/cobrador y Repartidor. Desde el login se puede solicitar una cuenta operativa, sujeta a aprobación administrativa.
 
