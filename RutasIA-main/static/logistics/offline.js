@@ -73,6 +73,11 @@
             const items = (p.items || []).map(line => ({ ...line, subtotal: line.quantity * Math.round(line.unit_price * 100) / 100,
                 product_name: products.find(product => product.id === line.product_id)?.name || "" }));
             const total = items.reduce((sum, line) => sum + Math.round(line.subtotal * 100), 0) / 100;
+            const inventory = rows(snapshots, "/api/inventory/", "inventory");
+            for (const line of items) {
+                const stock = inventory.find(row => row.product_id === line.product_id);
+                if (stock) stock.quantity = Math.max(0, stock.quantity - line.quantity);
+            }
             insert(item.url, "orders", response?.order || { ...p, id, code: `PENDIENTE-${Math.abs(id)}`, status: "pending", items,
                 origin_name: departments.find(row => row.id === p.origin_id)?.name || "",
                 destination_name: store?.department_name || departments.find(row => row.id === p.destination_id)?.name || "",
@@ -105,6 +110,13 @@
             const localId = Number(item.url.split("/")[3]);
             const orderId = mappings[localId] || localId;
             const order = rows(snapshots, "/api/orders/", "orders").find(row => row.id === orderId);
+            if (order && order.status !== "canceled") {
+                const inventory = rows(snapshots, "/api/inventory/", "inventory");
+                for (const line of order.items || []) {
+                    const stock = inventory.find(row => row.product_id === line.product_id);
+                    if (stock) stock.quantity += line.quantity;
+                }
+            }
             if (order) Object.assign(order, response?.order || { status: "canceled", balance_due: 0 });
             for (const trip of rows(snapshots, "/api/trips/", "trips")) {
                 for (const value of trip.orders) if (value.id === orderId) Object.assign(value, { status: "canceled", balance_due: 0 });
@@ -179,6 +191,14 @@
                 }
                 for (const row of Object.values(balances)) for (const field of ["sales_total", "paid_total", "balance_due"]) row[field] = Math.round(row[field] * 100) / 100;
                 snapshots[url] = { ok: true, balances: Object.values(balances).sort((a, b) => b.balance_due - a.balance_due) };
+            }
+            if (url === "/api/inventory/") {
+                const inventory = rows(snapshots, url, "inventory");
+                snapshots[url].summary = {
+                    gas: inventory.filter(row => row.product_type === "gas" && row.is_active).reduce((sum, row) => sum + row.quantity, 0),
+                    water: inventory.filter(row => row.product_type === "water" && row.is_active).reduce((sum, row) => sum + row.quantity, 0),
+                    low_stock: inventory.filter(row => row.is_active && (row.quantity === 0 || (row.minimum_quantity > 0 && row.quantity <= row.minimum_quantity))).length
+                };
             }
             const data = snapshots[url];
             if (!data) throw new Error("Estos datos todavia no estan disponibles sin conexion. Abre Flamia con internet antes de salir a repartir.");

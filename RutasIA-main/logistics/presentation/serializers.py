@@ -147,7 +147,7 @@ def _serialize_inventory_item(item: InventoryItem | None, product: Product) -> d
         "is_active": product.is_active,
         "quantity": quantity,
         "minimum_quantity": minimum_quantity,
-        "low_stock": minimum_quantity > 0 and quantity <= minimum_quantity,
+        "low_stock": quantity == 0 or (minimum_quantity > 0 and quantity <= minimum_quantity),
         "updated_at": item.updated_at.isoformat() if item else None,
         "updated_by_name": (
             item.updated_by.get_full_name() or item.updated_by.username

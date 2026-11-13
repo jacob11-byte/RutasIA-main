@@ -103,3 +103,53 @@ class InventoryApiTests(TestCase):
         self.assertEqual(self.water.unit_price, Decimal("23.50"))
         self.assertEqual(item.unit_price, Decimal("20.00"))
         self.assertEqual(order.total_amount, Decimal("40.00"))
+
+    def test_orders_require_stock_deduct_it_and_restore_it_when_canceled(self):
+        department = Department.objects.create(code="GUA-S", name="Guatemala stock")
+        store = Store.objects.create(name="Cliente stock", department=department, latitude=14.63, longitude=-90.51)
+        InventoryItem.objects.create(product=self.water, quantity=2, minimum_quantity=1)
+        payload = {
+            "origin_id": department.pk,
+            "store_id": store.pk,
+            "items": [{"product_id": self.water.pk, "quantity": 3}],
+        }
+        rejected = self.post("/api/orders/", payload)
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIn("Disponible: 2; solicitado: 3", rejected.json()["error"])
+        self.assertFalse(Order.objects.filter(store=store).exists())
+
+        payload["items"][0]["quantity"] = 2
+        created = self.post("/api/orders/", payload)
+        self.assertEqual(created.status_code, 201)
+        order = Order.objects.get(pk=created.json()["order"]["id"])
+        stock = InventoryItem.objects.get(product=self.water)
+        self.assertEqual(stock.quantity, 0)
+        self.assertTrue(order.inventory_reserved)
+
+        canceled = self.post(f"/api/orders/{order.pk}/action/", {"action": "cancel"})
+        self.assertEqual(canceled.status_code, 200)
+        stock.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(stock.quantity, 2)
+        self.assertFalse(order.inventory_reserved)
+        self.assertEqual(
+            list(InventoryMovement.objects.filter(inventory=stock).values_list("movement_type", flat=True)),
+            [InventoryMovement.MovementType.ENTRY, InventoryMovement.MovementType.EXIT],
+        )
+
+    def test_deleting_a_pending_order_restores_reserved_stock(self):
+        department = Department.objects.create(code="GUA-D", name="Guatemala delete stock")
+        store = Store.objects.create(name="Cliente eliminar", department=department, latitude=14.63, longitude=-90.51)
+        stock = InventoryItem.objects.create(product=self.gas, quantity=5)
+        created = self.post("/api/orders/", {
+            "origin_id": department.pk,
+            "store_id": store.pk,
+            "items": [{"product_id": self.gas.pk, "quantity": 2}],
+        })
+        order_id = created.json()["order"]["id"]
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, 3)
+        deleted = self.post(f"/api/orders/{order_id}/delete/", {})
+        self.assertEqual(deleted.status_code, 200)
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, 5)

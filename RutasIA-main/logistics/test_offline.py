@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from logistics.application.services import TripLifecycleService, TripPlanner
-from logistics.models import Department, Driver, MutationReceipt, Order, Payment, Product, RouteStop, Store, TripEvent, UserProfile, Vehicle
+from logistics.models import Department, Driver, InventoryItem, MutationReceipt, Order, Payment, Product, RouteStop, Store, TripEvent, UserProfile, Vehicle
 
 
 class OfflineApiTests(TestCase):
@@ -24,6 +24,7 @@ class OfflineApiTests(TestCase):
                               "captured_at": timezone.now().isoformat()}
         self.store = Store.objects.create(name="Cliente", department=self.department, latitude="14.63", longitude="-90.51")
         self.product = Product.objects.create(name="Garrafon", unit_price=20, unit_weight_kg=20)
+        InventoryItem.objects.create(product=self.product, quantity=100, minimum_quantity=10)
         self.order = Order.objects.create(origin=self.department, destination=self.department, store=self.store, weight_kg=20)
         self.vehicle = Vehicle.objects.create(plate="TEST-GPS", model="Reparto", capacity_kg=1000,
                                               fuel_efficiency_km_l=10, cost_per_km=2)

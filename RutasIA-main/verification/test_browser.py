@@ -9,7 +9,7 @@ from django.core.cache import cache
 from django.test import override_settings
 from playwright.sync_api import sync_playwright
 
-from logistics.models import Department, Driver, Order, OrderItem, Payment, Product, Store, UserProfile, Vehicle
+from logistics.models import Department, Driver, InventoryItem, Order, OrderItem, Payment, Product, Store, UserProfile, Vehicle
 from logistics.application.services import TripPlanner, TripLifecycleService
 
 
@@ -47,6 +47,7 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         UserProfile.objects.create(user=self.user, role=UserProfile.Role.SUPERVISOR)
         self.department = Department.objects.create(code="GUA", name="Guatemala", latitude="14.63", longitude="-90.51")
         self.product = Product.objects.create(name="Agua", unit_price=20, unit_weight_kg=20)
+        InventoryItem.objects.create(product=self.product, quantity=100, minimum_quantity=10)
         self.store = Store.objects.create(name="Cliente base", department=self.department, latitude="14.634915", longitude="-90.506882")
         order = Order.objects.create(origin=self.department, destination=self.department, store=self.store, weight_kg=20)
         OrderItem.objects.create(order=order, product=self.product, quantity=1, unit_price=20)
@@ -481,6 +482,18 @@ class OfflineBrowserTests(StaticLiveServerTestCase):
         )
         self.assertIn("40 unidades", self.page.locator("#inventory-body").inner_text())
         self.assertIn("Conteo inicial de bodega", self.page.locator("#inventory-movements-body").inner_text())
+
+        self.tab("orders")
+        self.page.locator("#order-store").select_option(str(self.store.pk))
+        self.page.locator("#order-origin").select_option(str(self.department.pk))
+        self.page.locator("#order-product").select_option(str(self.product.pk))
+        self.page.locator('#order-form [name="quantity"]').fill("2")
+        self.page.locator('#order-form [type="submit"]').click()
+        self.page.wait_for_function(
+            "id => state.inventory.some(item => item.product_id === id && item.quantity === 38) && document.querySelector('#order-product').textContent.includes('38 disponibles')",
+            arg=self.product.pk,
+        )
+        self.assertIn("38 disponibles", self.page.locator("#order-product").inner_text())
         self.assertEqual(self.errors, [])
 
 

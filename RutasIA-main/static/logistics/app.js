@@ -630,8 +630,10 @@ function renderProductSelects() {
     select.innerHTML = [
         `<option value="">Seleccione producto...</option>`,
         ...activeProducts.map((product) => {
-            const label = `${product.name} ${product.presentation || ""} - Q ${Number(product.unit_price).toFixed(2)}`;
-            return `<option value="${product.id}">${escapeHtml(label)}</option>`;
+            const inventory = state.inventory.find(item => item.product_id === product.id);
+            const available = inventory?.quantity || 0;
+            const label = `${product.name} ${product.presentation || ""} - Q ${Number(product.unit_price).toFixed(2)} - ${available} disponibles`;
+            return `<option value="${product.id}" ${available <= 0 ? "disabled" : ""}>${escapeHtml(label)}</option>`;
         })
     ].join("");
 }
@@ -641,6 +643,16 @@ function updateOrderEstimate() {
     if (!form) return;
     const product = state.products.find((item) => String(item.id) === form.product_id.value);
     const quantity = Number(form.quantity.value || 0);
+    const inventory = product ? state.inventory.find(item => item.product_id === product.id) : null;
+    const available = inventory?.quantity || 0;
+    const stockStatus = document.getElementById("order-stock-status");
+    form.quantity.max = product ? String(available) : "";
+    if (stockStatus) {
+        stockStatus.textContent = product
+            ? `Existencia disponible: ${available} unidad(es). El pedido descontara ${quantity || 0}.`
+            : "Selecciona un producto para consultar existencias.";
+        stockStatus.classList.toggle("is-error", Boolean(product) && (available <= 0 || quantity > available));
+    }
     if (!product || !quantity) {
         form.weight_kg.value = "";
         form.total_amount.value = "";
@@ -1786,6 +1798,16 @@ async function onOrderSubmit(event) {
         return;
     }
     const quantity = Number(form.quantity.value || 0);
+    const inventory = state.inventory.find(item => item.product_id === product.id);
+    const available = inventory?.quantity || 0;
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+        showToast("La cantidad debe ser un entero mayor que cero.", true);
+        return;
+    }
+    if (quantity > available) {
+        showToast(`Inventario insuficiente. Disponible: ${available}; solicitado: ${quantity}.`, true);
+        return;
+    }
     const payload = {
         origin_id: Number(form.origin_id.value),
         destination_id: Number(form.destination_id.value),

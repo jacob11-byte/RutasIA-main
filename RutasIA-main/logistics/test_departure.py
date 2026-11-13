@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from logistics.models import Department, Order, Product, Store, UserProfile
+from logistics.models import Department, InventoryItem, Order, Product, Store, UserProfile
 
 
 class OrderDepartureLocationTests(TestCase):
@@ -16,6 +16,7 @@ class OrderDepartureLocationTests(TestCase):
         self.department = Department.objects.create(code="GUA", name="Guatemala", latitude="14.63", longitude="-90.51")
         self.store = Store.objects.create(name="Tienda", department=self.department, latitude="14.63", longitude="-90.51")
         self.product = Product.objects.create(name="Agua", unit_price=Decimal("20"), unit_weight_kg=Decimal("20"))
+        InventoryItem.objects.create(product=self.product, quantity=100)
 
     def create_order(self, **departure):
         payload = {

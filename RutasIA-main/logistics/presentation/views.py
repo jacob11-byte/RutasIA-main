@@ -41,6 +41,7 @@ from logistics.presentation.permissions import role_policy
 from logistics.presentation.validation import decimal_field, required_text
 from logistics.application.collections import record_collection, operation_time
 from logistics.application.deletion import DELETERS
+from logistics.application.inventory import reserve_order_inventory, restore_order_inventory
 from logistics.presentation.location import parse_location
 from logistics.domain.exceptions import PlanningError
 from logistics.domain.services import haversine_km
@@ -712,6 +713,7 @@ def api_orders(request: HttpRequest):
             order.weight_kg = total_weight
             order.package_count = total_packages or order.package_count
             order.save(update_fields=["weight_kg", "package_count", "updated_at"])
+        reserve_order_inventory(order, recorded_by=request.user)
         return _ok({"order": _serialize_order(order)}, status=201)
     except KeyError as exc:
         return _error(f"Falta el campo requerido: {exc.args[0]}")
@@ -742,6 +744,11 @@ def api_order_action(request: HttpRequest, order_id: int):
             return _error("Solo se pueden cancelar pedidos pendientes o asignados.")
         if order.paid_amount > 0:
             return _error("El pedido tiene cobros registrados. Revisa esos cobros antes de cancelar; no se generan devoluciones automaticas.")
+        restore_order_inventory(
+            order,
+            recorded_by=request.user,
+            reason=f"Devolucion automatica por cancelacion del pedido {order.code}",
+        )
         order.status = Order.Status.CANCELED
         order.save(update_fields=["status", "updated_at"])
         for stop in order.route_stops.filter(trip__status__in=[Trip.Status.PLANNED, Trip.Status.IN_PROGRESS]):
@@ -766,7 +773,7 @@ def api_delete(request: HttpRequest, kind: str, record_id: int):
     if deleter is None:
         return _error("Este tipo de registro no se puede eliminar.", 404)
     try:
-        deleter(record_id)
+        deleter(record_id, recorded_by=request.user)
     except ObjectDoesNotExist:
         return _error("El registro ya no existe.", 404)
     except PlanningError as exc:

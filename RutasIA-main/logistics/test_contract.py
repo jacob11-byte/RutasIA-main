@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from logistics.application.services import TripLifecycleService, TripPlanner
 from logistics.domain.exceptions import PlanningError
-from logistics.models import Department, Driver, Order, OrderItem, Payment, PaymentAllocation, Product, Store, TripEvent, UserProfile, Vehicle
+from logistics.models import Department, Driver, InventoryItem, Order, OrderItem, Payment, PaymentAllocation, Product, Store, TripEvent, UserProfile, Vehicle
 
 
 class DocumentContractTests(TestCase):
@@ -24,6 +24,7 @@ class DocumentContractTests(TestCase):
         self.department = Department.objects.create(code="GUA", name="Guatemala")
         self.store = Store.objects.create(name="Cliente", department=self.department, latitude=14.63, longitude=-90.51)
         self.product = Product.objects.create(name="Agua", unit_price=20, unit_weight_kg=20)
+        InventoryItem.objects.create(product=self.product, quantity=100, minimum_quantity=10)
         self.driver = Driver.objects.create(name="Repartidor", license_number="L-01")
         self.vehicle = Vehicle.objects.create(plate="C-TEST", model="Reparto", capacity_kg=1000, fuel_efficiency_km_l=10, cost_per_km=2, driver=self.driver)
         self.order = self.make_order()

@@ -620,6 +620,11 @@ details.pending-panel[open] {
     line-height: 1.45;
 }
 
+#order-stock-status.is-error {
+    color: #b91c1c;
+    font-weight: 700;
+}
+
 @media (max-width: 760px) {
     .inventory-summary {
         grid-template-columns: 1fr;

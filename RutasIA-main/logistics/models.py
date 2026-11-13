@@ -288,6 +288,7 @@ class Order(TimestampedModel):
     departure_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     departure_accuracy_m = models.FloatField(null=True, blank=True)
     departure_captured_at = models.DateTimeField(null=True, blank=True)
+    inventory_reserved = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-created_at"]

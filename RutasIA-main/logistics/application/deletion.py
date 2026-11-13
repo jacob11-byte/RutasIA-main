@@ -6,17 +6,18 @@ reports stay consistent; the caller is told to deactivate or cancel instead.
 from __future__ import annotations
 
 from logistics.domain.exceptions import PlanningError
+from logistics.application.inventory import restore_order_inventory
 from logistics.models import Department, Driver, Order, Product, Store, Vehicle
 
 
-def delete_store(store_id: int) -> None:
+def delete_store(store_id: int, recorded_by=None) -> None:
     store = Store.objects.select_for_update().get(pk=store_id)
     if store.orders.exists() or store.payments.exists() or store.route_stops.exists():
         raise PlanningError("La tienda tiene pedidos, cobros o visitas registradas. Desactivala desde Editar para conservar su historial.")
     store.delete()
 
 
-def delete_order(order_id: int) -> None:
+def delete_order(order_id: int, recorded_by=None) -> None:
     # Same lock order as order cancellation and payments: store first, then order.
     store_id = Order.objects.values_list("store_id", flat=True).get(pk=order_id)
     if store_id:
@@ -28,24 +29,29 @@ def delete_order(order_id: int) -> None:
         raise PlanningError("El pedido ya forma parte de una ruta. Cancelalo para conservar el historial de la ruta.")
     if order.paid_amount > 0 or order.payments.exists() or order.payment_allocations.exists():
         raise PlanningError("El pedido tiene cobros registrados y no se puede eliminar.")
+    restore_order_inventory(
+        order,
+        recorded_by=recorded_by,
+        reason=f"Devolucion automatica por eliminacion del pedido {order.code}",
+    )
     order.delete()
 
 
-def delete_product(product_id: int) -> None:
+def delete_product(product_id: int, recorded_by=None) -> None:
     product = Product.objects.select_for_update().get(pk=product_id)
     if product.order_items.exists():
         raise PlanningError("El producto aparece en pedidos registrados. Desactivalo para que ya no se pueda vender.")
     product.delete()
 
 
-def delete_vehicle(vehicle_id: int) -> None:
+def delete_vehicle(vehicle_id: int, recorded_by=None) -> None:
     vehicle = Vehicle.objects.select_for_update().get(pk=vehicle_id)
     if vehicle.trips.exists():
         raise PlanningError("El vehiculo tiene rutas registradas. Desactivalo para que no se use en nuevas rutas.")
     vehicle.delete()
 
 
-def delete_driver(driver_id: int) -> None:
+def delete_driver(driver_id: int, recorded_by=None) -> None:
     driver = Driver.objects.select_for_update().get(pk=driver_id)
     if driver.user_id:
         raise PlanningError("El repartidor tiene una cuenta de usuario. Desactiva su acceso en Usuarios.")
@@ -54,7 +60,7 @@ def delete_driver(driver_id: int) -> None:
     driver.delete()
 
 
-def delete_department(department_id: int) -> None:
+def delete_department(department_id: int, recorded_by=None) -> None:
     department = Department.objects.select_for_update().get(pk=department_id)
     in_use = (
         department.stores.exists()
